@@ -37,3 +37,5 @@ output/*
 *.swo
 .DS_Store
 Thumbs.db
+.playwright-mcp/
+nul

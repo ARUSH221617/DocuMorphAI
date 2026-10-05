@@ -19,37 +19,63 @@
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
   <style>
-    /* Kinetic Typography Design Tokens: Light Theme (Default) */
+    /* Google Material 3 Compliant Tokens: Light Theme (Default) */
     :root {
       --background: #FAFAFA;
       --foreground: #09090B;
       --surface: #FFFFFF;
       --surface-alt: #F4F4F5;
       --muted: #E4E4E7;
-      --muted-foreground: #71717A;
-      --accent: #DFE104;
+      --muted-foreground: #3F3F46; /* M3 on-surface-variant (Tone 30): 10.5:1 on white, WCAG AAA */
+      --accent: #DFE104; /* High energy container/button fill */
       --accent-hover: #CDCF00;
-      --accent-foreground: #000000;
-      --border: #18181B;
-      --border-subtle: #D4D4D8;
+      --accent-foreground: #000000; /* M3 on-primary / on-container: 17.5:1 contrast */
+      --accent-text: #4D5000; /* M3 Tone 30 text accent on light surface: 8.07:1, WCAG AAA */
+      --accent-focus: #4D5000; /* M3 focus indicator: 8.07:1, WCAG 3:1 compliant */
+      --accent-progress: #4D5000; /* M3 visible bar progress against light track */
+      --border: #18181B; /* High-contrast structural line: 18:1 */
+      --border-subtle: #71717A; /* M3 outline: 4.6:1 against surface, WCAG 3:1 compliant */
+      --error: #BA1A1A; /* M3 Error Tone 40: 6.54:1 on white, WCAG AA */
+      --error-hover: #93000A;
+      --error-foreground: #FFFFFF;
+      --error-container: #FFDAD6;
+      --on-error-container: #410002;
+      --success: #146C2E; /* M3 Success Tone 30 (Google Green 700): 5.52:1 on white, WCAG AA */
+      --success-hover: #0F5222;
+      --success-foreground: #FFFFFF;
+      --success-container: #C4EED0;
+      --on-success-container: #002107;
       --font-display: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
       --font-persian: 'Vazirmatn', 'Space Grotesk', sans-serif;
       --font-mono: 'Fira Code', monospace;
     }
 
-    /* Dark Theme Override */
+    /* Google Material 3 Compliant Tokens: Dark Theme Override */
     body.theme-dark {
       --background: #09090B;
       --foreground: #FAFAFA;
       --surface: #121217;
       --surface-alt: #1A1A22;
       --muted: #27272A;
-      --muted-foreground: #A1A1AA;
+      --muted-foreground: #A1A1AA; /* M3 on-surface-variant (Tone 80): 8.5:1 on dark, WCAG AAA */
       --accent: #DFE104;
       --accent-hover: #F0F200;
       --accent-foreground: #000000;
+      --accent-text: #DFE104; /* M3 Tone 80 text accent on dark surface: 16.2:1, WCAG AAA */
+      --accent-focus: #DFE104;
+      --accent-progress: #DFE104;
       --border: #3F3F46;
-      --border-subtle: #27272A;
+      --border-subtle: #49454F; /* M3 outline dark */
+      --error: #FFB4AB; /* M3 Error Tone 80: 10.5:1 on dark surface, WCAG AAA */
+      --error-hover: #FFDAD6;
+      --error-foreground: #690005;
+      --error-container: #93000A;
+      --on-error-container: #FFDAD6;
+      --success: #75DC84; /* M3 Success Tone 80 (Google Green 300): 10.2:1 on dark, WCAG AAA */
+      --success-hover: #96E8A2;
+      --success-foreground: #003914;
+      --success-container: #00531F;
+      --on-success-container: #A6F5B4;
     }
 
     * {
@@ -278,8 +304,8 @@
     .status-dot-active {
       width: 8px;
       height: 8px;
-      background: #22c55e;
-      border: 1px solid #166534;
+      background: var(--success);
+      border: 1px solid var(--border);
       display: inline-block;
     }
 
@@ -402,7 +428,7 @@
     }
 
     .upload-zone:hover, .upload-zone.dragover {
-      border-color: var(--accent);
+      border-color: var(--accent-focus);
       background: var(--surface);
       border-style: solid;
     }
@@ -486,8 +512,8 @@
 
     .btn-remove {
       background: transparent;
-      border: 2px solid #ef4444;
-      color: #ef4444;
+      border: 2px solid var(--error);
+      color: var(--error);
       cursor: pointer;
       font-size: 0.8rem;
       font-weight: 700;
@@ -499,8 +525,8 @@
     }
 
     .btn-remove:hover {
-      background: #ef4444;
-      color: #ffffff;
+      background: var(--error);
+      color: var(--error-foreground);
     }
 
     /* Options Row */
@@ -541,7 +567,7 @@
     }
 
     .form-select:focus, .form-input:focus {
-      border-color: var(--accent);
+      border-color: var(--accent-focus);
     }
 
     /* Action Row */
@@ -641,7 +667,7 @@
     .progress-bar {
       height: 100%;
       width: 0%;
-      background: var(--accent);
+      background: var(--accent-progress);
       transition: width 0.25s linear;
     }
 
@@ -691,7 +717,7 @@
     }
 
     .recent-job-item:hover {
-      border-color: var(--accent);
+      border-color: var(--accent-focus);
       background: var(--surface);
     }
 
@@ -803,6 +829,171 @@
       color: #000000;
     }
 
+    /* Refined Context Window Telemetry Panel */
+    .context-telemetry-panel {
+      background: var(--surface);
+      border: 2px solid var(--border);
+      padding: 1.5rem 1.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      position: relative;
+    }
+
+    .ctx-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .ctx-header-left {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .ctx-header-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      text-transform: uppercase;
+      color: var(--foreground);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .ctx-meter-wrapper {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+
+    .ctx-meter-bar-container {
+      width: 100%;
+      height: 18px;
+      background: var(--muted);
+      border: 2px solid var(--border);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+    }
+
+    .ctx-bar-segment {
+      height: 100%;
+      transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .ctx-bar-prompt {
+      background: var(--accent-progress);
+    }
+
+    .ctx-bar-output {
+      background: #0284c7; /* M3 Sky blue (accessible contrast) */
+    }
+
+    body.theme-dark .ctx-bar-output {
+      background: #38bdf8;
+    }
+
+    .ctx-meter-ticks {
+      display: flex;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      font-weight: 700;
+      color: var(--muted-foreground);
+      padding: 0 2px;
+      text-transform: uppercase;
+    }
+
+    .ctx-meter-legend {
+      display: flex;
+      gap: 1.75rem;
+      align-items: center;
+      flex-wrap: wrap;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--muted-foreground);
+      text-transform: uppercase;
+    }
+
+    .ctx-legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+    }
+
+    .ctx-legend-dot {
+      width: 10px;
+      height: 10px;
+      border: 1px solid var(--border);
+      display: inline-block;
+    }
+
+    .ctx-legend-dot.prompt {
+      background: var(--accent-progress);
+    }
+
+    .ctx-legend-dot.output {
+      background: #0284c7;
+    }
+
+    body.theme-dark .ctx-legend-dot.output {
+      background: #38bdf8;
+    }
+
+    .ctx-legend-dot.headroom {
+      background: var(--muted);
+    }
+
+    .ctx-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+    }
+
+    .ctx-stat-cell {
+      border: 1.5px solid var(--border);
+      background: var(--surface-alt);
+      padding: 1rem 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      transition: border-color 0.15s ease;
+    }
+
+    .ctx-stat-cell:hover {
+      border-color: var(--accent-focus);
+    }
+
+    .ctx-stat-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted-foreground);
+    }
+
+    .ctx-stat-value {
+      font-family: var(--font-mono);
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: var(--foreground);
+    }
+
+    .ctx-stat-sub {
+      font-size: 0.7rem;
+      font-family: var(--font-mono);
+      color: var(--muted-foreground);
+      text-transform: uppercase;
+    }
+
     /* Agent Interactive Bar */
     .agent-panel {
       display: flex;
@@ -845,7 +1036,7 @@
     }
 
     .agent-input:focus {
-      border-color: var(--accent);
+      border-color: var(--accent-focus);
     }
 
     /* Studio Sub-Tabs */
@@ -939,6 +1130,7 @@
     .document-preview th {
       background: #f1f5f9;
       font-weight: 700;
+      color: #0f172a;
     }
 
     .document-preview svg {
@@ -981,7 +1173,7 @@
     }
 
     .svg-card:hover {
-      border-color: var(--accent);
+      border-color: var(--accent-focus);
     }
 
     .svg-card-header {
@@ -1036,7 +1228,7 @@
     }
 
     .markdown-textarea:focus {
-      border-color: var(--accent);
+      border-color: var(--accent-focus);
     }
 
     .btn-copy {
@@ -1152,6 +1344,7 @@
       text-transform: uppercase;
       border: 1px solid var(--border);
       background: var(--surface);
+      color: var(--foreground);
     }
 
     .badge-tag.accent {
@@ -1188,13 +1381,13 @@
     }
 
     .btn-action-small.danger {
-      border-color: #ef4444;
-      color: #ef4444;
+      border-color: var(--error);
+      color: var(--error);
     }
 
     .btn-action-small.danger:hover {
-      background: #ef4444;
-      color: #ffffff;
+      background: var(--error);
+      color: var(--error-foreground);
     }
 
     /* TOOLS / SANDBOX VIEW */
@@ -1288,7 +1481,7 @@
     }
 
     .skill-card:hover {
-      border-color: var(--accent);
+      border-color: var(--accent-focus);
       background: var(--surface-alt);
     }
 
@@ -1433,9 +1626,9 @@
     }
 
     .modal-close-btn:hover {
-      background: #ef4444;
-      color: white;
-      border-color: #ef4444;
+      background: var(--error);
+      color: var(--error-foreground);
+      border-color: var(--error);
     }
 
     /* AGENT STEPS TIMELINE STYLES */
@@ -1450,7 +1643,7 @@
     }
 
     .step-card:hover {
-      border-color: var(--accent);
+      border-color: var(--accent-focus);
       background: var(--surface-alt);
     }
 
@@ -1698,7 +1891,7 @@
           <div class="progress-header">
             <span id="progressTitle">PARALLEL QUEUE DISPATCHER ACTIVE</span>
             <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
-              <span id="progressTimer" style="font-family: var(--font-mono); color: var(--accent); font-weight: 700; font-size: 1.05rem;">00:00.0</span>
+              <span id="progressTimer" style="font-family: var(--font-mono); color: var(--accent-text); font-weight: 700; font-size: 1.05rem;">00:00.0</span>
               <span id="progressCostBadge" style="font-family: var(--font-mono); color: var(--foreground); font-weight: 700; font-size: 0.95rem; border: 1px solid var(--border); padding: 0.2rem 0.5rem; background: var(--surface);">$0.0000</span>
               <span id="progressTokensBadge" style="font-family: var(--font-mono); color: var(--foreground); font-weight: 700; font-size: 0.9rem; border: 1px solid var(--border); padding: 0.2rem 0.5rem; background: var(--surface);">0 TOKENS (0.00% CTX)</span>
               <span id="progressPercent">0%</span>
@@ -1755,22 +1948,6 @@
             <div style="flex: 1;">
               <div class="success-title" id="studioDocTitle">DOCUMENT READY</div>
               <div class="success-subtitle" id="resultStats">PROCESSED PAGES WITH NATIVE OMML FORMULAS &amp; VECTOR SHAPES.</div>
-              
-              <!-- Context Window Usage Meter -->
-              <div id="studioContextMeter" style="margin-top: 1rem; border: 2px solid var(--border); background: var(--surface); padding: 1rem 1.25rem; display: flex; flex-direction: column; gap: 0.5rem;">
-                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
-                  <div style="display: flex; align-items: center; gap: 0.6rem;">
-                    <span class="badge-tag accent" style="font-size: 0.7rem;">CONTEXT WINDOW</span>
-                    <span style="font-weight: 700; font-size: 0.9rem; text-transform: uppercase;" id="contextTokensSummary">0 / 128,000 TOKENS (0.00%)</span>
-                  </div>
-                  <div style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted-foreground);" id="contextTokenDetails">
-                    PROMPT: 0 &bull; OUTPUT: 0 &bull; MODEL CEILING: 128,000
-                  </div>
-                </div>
-                <div style="width: 100%; height: 8px; background: var(--muted); border: 1px solid var(--border); overflow: hidden;">
-                  <div id="contextProgressBar" style="height: 100%; width: 0%; background: var(--accent); transition: width 0.3s ease;"></div>
-                </div>
-              </div>
             </div>
           </div>
           <div class="download-group">
@@ -1786,6 +1963,80 @@
               <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
               MARKDOWN (.MD)
             </a>
+          </div>
+        </div>
+
+        <!-- Dedicated Context Window Telemetry Panel -->
+        <div class="context-telemetry-panel" id="studioContextMeter" aria-label="Model Context Window Telemetry">
+          <div class="ctx-header">
+            <div class="ctx-header-left">
+              <span class="badge-tag accent">CONTEXT TELEMETRY</span>
+              <div class="ctx-header-title">
+                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M12 6v6l4 2"/>
+                </svg>
+                <span>// REAL-TIME CONTEXT WINDOW ALLOCATION</span>
+              </div>
+              <span id="ctxModelPill" class="badge-tag" style="font-family: var(--font-mono); font-size: 0.7rem;">MODEL: AG/GEMINI-3.8-FLASH-HIGH</span>
+              <span id="ctxHealthBadge" class="badge-tag" style="background: var(--success); color: var(--success-foreground); border-color: var(--border);">OPTIMAL &bull; 0.00%</span>
+            </div>
+            <div style="font-family: var(--font-mono); font-weight: 700; font-size: 1.05rem;" id="contextTokensSummary">
+              0 / 128,000 TOKENS (0.00%)
+            </div>
+          </div>
+
+          <!-- Segmented Meter Bar -->
+          <div class="ctx-meter-wrapper">
+            <div class="ctx-meter-bar-container" title="Context Window Allocation">
+              <div class="ctx-bar-segment ctx-bar-prompt" id="ctxPromptBar" style="width: 0%;" title="Prompt Tokens"></div>
+              <div class="ctx-bar-segment ctx-bar-output" id="ctxOutputBar" style="width: 0%;" title="Completion Tokens"></div>
+            </div>
+            <div class="ctx-meter-ticks">
+              <span>0% [START]</span>
+              <span>25%</span>
+              <span>50%</span>
+              <span>75% [WARNING]</span>
+              <span>100% [CEILING]</span>
+            </div>
+            <div class="ctx-meter-legend">
+              <span class="ctx-legend-item">
+                <span class="ctx-legend-dot prompt"></span>
+                <span>PROMPT: <strong id="legendPromptVal" style="color: var(--foreground);">0</strong> (<span id="legendPromptPct">0.0%</span>)</span>
+              </span>
+              <span class="ctx-legend-item">
+                <span class="ctx-legend-dot output"></span>
+                <span>COMPLETION: <strong id="legendOutputVal" style="color: var(--foreground);">0</strong> (<span id="legendOutputPct">0.0%</span>)</span>
+              </span>
+              <span class="ctx-legend-item">
+                <span class="ctx-legend-dot headroom"></span>
+                <span>REMAINING: <strong id="legendHeadroomVal" style="color: var(--foreground);">128,000</strong> (<span id="legendHeadroomPct">100.0%</span>)</span>
+              </span>
+            </div>
+          </div>
+
+          <!-- 4-Stat Telemetry Grid -->
+          <div class="ctx-stats-grid">
+            <div class="ctx-stat-cell">
+              <div class="ctx-stat-label">// PROMPT INPUT</div>
+              <div class="ctx-stat-value" id="ctxStatPrompt">0</div>
+              <div class="ctx-stat-sub">DOCUMENT &amp; SYSTEM PAYLOAD</div>
+            </div>
+            <div class="ctx-stat-cell">
+              <div class="ctx-stat-label">// OUTPUT SYNTHESIZED</div>
+              <div class="ctx-stat-value" id="ctxStatCompletion">0</div>
+              <div class="ctx-stat-sub">COMPLETION &amp; REFINEMENT</div>
+            </div>
+            <div class="ctx-stat-cell">
+              <div class="ctx-stat-label">// AVAILABLE HEADROOM</div>
+              <div class="ctx-stat-value" id="ctxStatHeadroom">128,000</div>
+              <div class="ctx-stat-sub">FREE ROOM FOR AGENT EDITS</div>
+            </div>
+            <div class="ctx-stat-cell">
+              <div class="ctx-stat-label">// WINDOW CAPACITY</div>
+              <div class="ctx-stat-value" id="ctxStatCeiling">128,000</div>
+              <div class="ctx-stat-sub">DYNAMIC FROM OPENAI API</div>
+            </div>
           </div>
         </div>
 
@@ -1917,7 +2168,7 @@
           <div class="stat-label">STORAGE CONSUMED</div>
         </div>
         <div class="stat-card">
-          <div class="stat-val" id="statTotalTokens" style="color: var(--accent);">0</div>
+          <div class="stat-val" id="statTotalTokens" style="color: var(--accent-text);">0</div>
           <div class="stat-label">TOTAL TOKENS PROCESSED</div>
         </div>
         <div class="stat-card">
@@ -2179,10 +2430,10 @@
       </div>
 
       <!-- Maintenance & Cache Purge Card -->
-      <div class="card" style="border-color: #ef4444;">
-        <div class="card-watermark" aria-hidden="true" style="color: #ef4444; opacity: 0.15;">DEL</div>
+      <div class="card" style="border-color: var(--error);">
+        <div class="card-watermark" aria-hidden="true" style="color: var(--error); opacity: 0.12;">DEL</div>
         <div class="card-header">
-          <h2 class="card-title" style="color: #ef4444;">MAINTENANCE // PURGE CACHE &amp; CLEAN DB</h2>
+          <h2 class="card-title" style="color: var(--error);">MAINTENANCE // PURGE CACHE &amp; CLEAN DB</h2>
           <p class="card-desc">Removes all uploaded input files, generated Word DOCX/MD/SVG output artifacts, and wipes jobs/chat history in SQLite (preserves your configured API settings).</p>
         </div>
 
@@ -2190,7 +2441,7 @@
           <div id="clearCacheStatus" style="font-size: 0.85rem; font-weight: 700; text-transform: uppercase; color: var(--muted-foreground);">
             CACHE STATUS: READY
           </div>
-          <button type="button" class="btn-primary" id="btnClearCache" style="background: #ef4444; color: #ffffff; border-color: #ef4444;">
+          <button type="button" class="btn-primary" id="btnClearCache" style="background: var(--error); color: var(--error-foreground); border-color: var(--error);">
             <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
             PURGE CACHE &amp; CLEAN DB
           </button>
@@ -2758,7 +3009,92 @@
       setTimeout(() => btnCopyMd.textContent = 'COPY MARKDOWN', 2000);
     });
 
+    function updateContextTelemetry(pTokens, cTokens, totTokens, ctxLimit, modelName) {
+      pTokens = pTokens || 0;
+      cTokens = cTokens || 0;
+      totTokens = totTokens || (pTokens + cTokens);
+      ctxLimit = ctxLimit || 128000;
+
+      const totPctNum = ctxLimit > 0 ? (totTokens / ctxLimit) * 100 : 0;
+      const totPct = totPctNum.toFixed(2);
+      const promptPctNum = ctxLimit > 0 ? (pTokens / ctxLimit) * 100 : 0;
+      const promptPct = promptPctNum.toFixed(2);
+      const outputPctNum = ctxLimit > 0 ? (cTokens / ctxLimit) * 100 : 0;
+      const outputPct = outputPctNum.toFixed(2);
+      const headroom = Math.max(0, ctxLimit - totTokens);
+      const headroomPct = Math.max(0, 100 - totPctNum).toFixed(2);
+
+      // Top summary text
+      const summaryEl = document.getElementById('contextTokensSummary');
+      if (summaryEl) {
+        summaryEl.textContent = `${totTokens.toLocaleString()} / ${ctxLimit.toLocaleString()} TOKENS (${totPct}%)`;
+      }
+
+      // Model pill
+      const modelPill = document.getElementById('ctxModelPill');
+      if (modelPill) {
+        const activeModel = modelName || document.getElementById('modelSelect')?.value || 'DEFAULT';
+        modelPill.textContent = `MODEL: ${activeModel.toUpperCase()}`;
+      }
+
+      // Health status pill with M3 compliant contrast
+      const healthBadge = document.getElementById('ctxHealthBadge');
+      if (healthBadge) {
+        if (totPctNum >= 85) {
+          healthBadge.textContent = `CRITICAL LIMIT \u2022 ${totPct}%`;
+          healthBadge.style.background = 'var(--error)';
+          healthBadge.style.color = 'var(--error-foreground)';
+          healthBadge.style.borderColor = 'var(--error)';
+        } else if (totPctNum >= 65) {
+          healthBadge.textContent = `MODERATE LOAD \u2022 ${totPct}%`;
+          healthBadge.style.background = 'var(--accent)';
+          healthBadge.style.color = 'var(--accent-foreground)';
+          healthBadge.style.borderColor = '#000000';
+        } else {
+          healthBadge.textContent = `OPTIMAL \u2022 ${totPct}%`;
+          healthBadge.style.background = 'var(--success)';
+          healthBadge.style.color = 'var(--success-foreground)';
+          healthBadge.style.borderColor = 'var(--border)';
+        }
+      }
+
+      // Multi-segment progress bar
+      const promptBar = document.getElementById('ctxPromptBar');
+      const outputBar = document.getElementById('ctxOutputBar');
+      if (promptBar) {
+        promptBar.style.width = Math.min(100, Math.max(pTokens > 0 ? 0.6 : 0, promptPctNum)) + '%';
+      }
+      if (outputBar) {
+        outputBar.style.width = Math.min(100, Math.max(cTokens > 0 ? 0.6 : 0, outputPctNum)) + '%';
+      }
+
+      // Legend values
+      const legPromptVal = document.getElementById('legendPromptVal');
+      const legPromptPct = document.getElementById('legendPromptPct');
+      const legOutputVal = document.getElementById('legendOutputVal');
+      const legOutputPct = document.getElementById('legendOutputPct');
+      const legHeadroomVal = document.getElementById('legendHeadroomVal');
+      const legHeadroomPct = document.getElementById('legendHeadroomPct');
+      if (legPromptVal) legPromptVal.textContent = pTokens.toLocaleString();
+      if (legPromptPct) legPromptPct.textContent = promptPct + '%';
+      if (legOutputVal) legOutputVal.textContent = cTokens.toLocaleString();
+      if (legOutputPct) legOutputPct.textContent = outputPct + '%';
+      if (legHeadroomVal) legHeadroomVal.textContent = headroom.toLocaleString();
+      if (legHeadroomPct) legHeadroomPct.textContent = headroomPct + '%';
+
+      // 4-Stat Grid cells
+      const statPrompt = document.getElementById('ctxStatPrompt');
+      const statOutput = document.getElementById('ctxStatCompletion');
+      const statHeadroom = document.getElementById('ctxStatHeadroom');
+      const statCeiling = document.getElementById('ctxStatCeiling');
+      if (statPrompt) statPrompt.textContent = pTokens.toLocaleString();
+      if (statOutput) statOutput.textContent = cTokens.toLocaleString();
+      if (statHeadroom) statHeadroom.textContent = headroom.toLocaleString();
+      if (statCeiling) statCeiling.textContent = ctxLimit.toLocaleString();
+    }
+
     function showResultsInStudio(data) {
+      window.currentStudioDocData = data;
       currentBaseName = data.base_name;
       btnConvert.disabled = false;
 
@@ -2772,14 +3108,9 @@
       const ctxLimit = data.context_limit || 128000;
       const ctxPct = data.context_percent !== undefined ? data.context_percent : (totTokens ? ((totTokens / ctxLimit) * 100).toFixed(2) : 0);
 
-      resultStats.innerHTML = `TIME: <strong style="color: var(--accent);">${dur}</strong> &bull; EST. PRICE: <strong style="color: var(--accent);">${cost}</strong> &bull; TOKENS: <strong style="color: var(--accent);">${totTokens.toLocaleString()}</strong> (${ctxPct}% CTX) &bull; PAGES: ${data.total_pages || 1} &bull; SVGS: ${data.svgs ? data.svgs.length : 0}`;
+      resultStats.innerHTML = `TIME: <strong>${dur}</strong> &bull; EST. PRICE: <strong>${cost}</strong> &bull; TOKENS: <strong>${totTokens.toLocaleString()}</strong> (${ctxPct}% CTX) &bull; PAGES: ${data.total_pages || 1} &bull; SVGS: ${data.svgs ? data.svgs.length : 0}`;
 
-      const ctxSummary = document.getElementById('contextTokensSummary');
-      const ctxDetails = document.getElementById('contextTokenDetails');
-      const ctxBar = document.getElementById('contextProgressBar');
-      if (ctxSummary) ctxSummary.textContent = `${totTokens.toLocaleString()} / ${ctxLimit.toLocaleString()} TOKENS (${ctxPct}%)`;
-      if (ctxDetails) ctxDetails.textContent = `PROMPT: ${pTokens.toLocaleString()} \u2022 OUTPUT: ${cTokens.toLocaleString()} \u2022 CEILING: ${ctxLimit.toLocaleString()}`;
-      if (ctxBar) ctxBar.style.width = Math.min(100, Math.max(totTokens > 0 ? 0.8 : 0, ctxPct)) + '%';
+      updateContextTelemetry(pTokens, cTokens, totTokens, ctxLimit, data.model);
 
       btnDownloadDocx.href = `/api/download/${encodeURIComponent(data.docx_name)}`;
       btnDownloadZip.href = `/api/download/${encodeURIComponent(data.zip_name)}`;
@@ -2851,7 +3182,7 @@
             max-width: 85%;
           `;
           bubble.innerHTML = `
-            <div style="display: flex; justify-content: space-between; gap: 1rem; margin-bottom: 0.35rem; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; color: ${isUser ? 'var(--foreground)' : 'var(--accent)'};">
+            <div style="display: flex; justify-content: space-between; gap: 1rem; margin-bottom: 0.35rem; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; color: ${isUser ? 'var(--foreground)' : 'var(--accent-text)'};">
               <span>${isUser ? 'USER COMMAND' : 'AGENT EXECUTION'}</span>
               <span style="font-family: var(--font-mono); color: var(--muted-foreground);">${msg.formatted_time || ''}</span>
             </div>
@@ -2978,17 +3309,19 @@
         agentPromptInput.value = '';
         loadChatHistory(currentBaseName);
 
-        // Update context meter if present
+        // Update context telemetry if present
         if (data.context_usage || data.total_tokens) {
           const totTokens = data.total_tokens || ((data.prompt_tokens || 0) + (data.completion_tokens || 0));
           const ctxLimit = data.context_usage?.context_limit || 128000;
-          const ctxPct = data.context_usage?.context_percent !== undefined ? data.context_usage.context_percent : ((totTokens / ctxLimit) * 100).toFixed(2);
-          const ctxSummary = document.getElementById('contextTokensSummary');
-          const ctxDetails = document.getElementById('contextTokenDetails');
-          const ctxBar = document.getElementById('contextProgressBar');
-          if (ctxSummary) ctxSummary.textContent = `${totTokens.toLocaleString()} / ${ctxLimit.toLocaleString()} TOKENS (${ctxPct}%)`;
-          if (ctxDetails) ctxDetails.textContent = `PROMPT: ${(data.prompt_tokens || 0).toLocaleString()} \u2022 OUTPUT: ${(data.completion_tokens || 0).toLocaleString()} \u2022 CEILING: ${ctxLimit.toLocaleString()}`;
-          if (ctxBar) ctxBar.style.width = Math.min(100, Math.max(totTokens > 0 ? 0.8 : 0, ctxPct)) + '%';
+          const pTokens = data.prompt_tokens || (data.context_usage?.prompt_tokens || 0);
+          const cTokens = data.completion_tokens || (data.context_usage?.completion_tokens || 0);
+          if (window.currentStudioDocData) {
+            window.currentStudioDocData.prompt_tokens = pTokens;
+            window.currentStudioDocData.completion_tokens = cTokens;
+            window.currentStudioDocData.total_tokens = totTokens;
+            window.currentStudioDocData.context_limit = ctxLimit;
+          }
+          updateContextTelemetry(pTokens, cTokens, totTokens, ctxLimit, document.getElementById('modelSelect')?.value);
         }
 
         if (data.steps) {
@@ -3101,7 +3434,7 @@
 
         renderHistoryTable(allHistoryDocs);
       } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="6" style="color: #ef4444; text-transform: uppercase;">ERROR: ${err.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" style="color: var(--error); text-transform: uppercase;">ERROR: ${err.message}</td></tr>`;
       }
     }
 
@@ -3121,7 +3454,7 @@
           </td>
           <td style="font-size: 0.85rem; font-family: var(--font-mono);">${doc.formatted_time}</td>
           <td style="font-size: 0.85rem; font-family: var(--font-mono);"><span class="badge-tag" style="white-space: nowrap;">${(doc.total_tokens || 0).toLocaleString()} (${doc.context_percent || 0}%)</span></td>
-          <td style="font-size: 0.85rem; font-family: var(--font-mono); font-weight: 700; color: var(--accent);">${doc.formatted_duration || 'N/A'}</td>
+          <td style="font-size: 0.85rem; font-family: var(--font-mono); font-weight: 700; color: var(--accent-text);">${doc.formatted_duration || 'N/A'}</td>
           <td style="font-size: 0.85rem; font-family: var(--font-mono);"><span class="badge-tag accent">${doc.formatted_cost || '$0.0000'}</span></td>
           <td style="font-size: 0.85rem; font-family: var(--font-mono);">${formatBytes(doc.size)}</td>
           <td><span class="badge-tag">${doc.svg_count} SVGS</span></td>
@@ -3196,10 +3529,10 @@
         const data = await res.json();
         if (data.valid) {
           toolLatexStatus.textContent = `STATUS: VALID &bull; GENERATED WORD OMML TAG <${data.tag}> (EDITABLE VIA ALT+=)`;
-          toolLatexStatus.style.borderColor = '#22c55e';
+          toolLatexStatus.style.borderColor = 'var(--success)';
         } else {
           toolLatexStatus.textContent = `STATUS: FAILED &bull; ${data.error}`;
-          toolLatexStatus.style.borderColor = '#ef4444';
+          toolLatexStatus.style.borderColor = 'var(--error)';
         }
       } catch (err) {
         toolLatexStatus.textContent = `STATUS: ERROR &bull; ${err.message}`;
@@ -3228,10 +3561,10 @@
         const data = await res.json();
         if (data.valid) {
           toolSvgStatus.textContent = `STATUS: VALID XML &bull; ELEMENTS: ${data.elements_count} &bull; VIEWBOX: ${data.viewbox || 'N/A'} &bull; SHAPE COMPATIBLE: YES`;
-          toolSvgStatus.style.borderColor = '#22c55e';
+          toolSvgStatus.style.borderColor = 'var(--success)';
         } else {
           toolSvgStatus.textContent = `STATUS: INVALID SVG &bull; ${data.error}`;
-          toolSvgStatus.style.borderColor = '#ef4444';
+          toolSvgStatus.style.borderColor = 'var(--error)';
         }
       } catch (err) {
         toolSvgStatus.textContent = `STATUS: ERROR &bull; ${err.message}`;
@@ -3265,10 +3598,10 @@
         settingMaxWorkers.value = conf.max_concurrent_jobs || '3';
         settingOutputDir.value = conf.output_dir || '';
         settingsSaveStatus.textContent = 'STATUS: ACTIVE FROM SQLITE';
-        settingsSaveStatus.style.color = '#22c55e';
+        settingsSaveStatus.style.color = 'var(--success)';
       } catch (err) {
         settingsSaveStatus.textContent = 'STATUS: FAILED TO FETCH SETTINGS';
-        settingsSaveStatus.style.color = '#ef4444';
+        settingsSaveStatus.style.color = 'var(--error)';
       }
     }
 
@@ -3293,12 +3626,12 @@
         });
         if (!res.ok) throw new Error('Failed to save settings');
         settingsSaveStatus.textContent = 'STATUS: SAVED & APPLIED IN SQLITE!';
-        settingsSaveStatus.style.color = '#22c55e';
+        settingsSaveStatus.style.color = 'var(--success)';
         pollQueueStatus();
         loadAiModels();
       } catch (err) {
         settingsSaveStatus.textContent = 'STATUS: ERROR ' + err.message;
-        settingsSaveStatus.style.color = '#ef4444';
+        settingsSaveStatus.style.color = 'var(--error)';
       }
     });
 
@@ -3319,7 +3652,7 @@
         if (!res.ok) throw new Error('Clear cache request failed');
         const data = await res.json();
         clearCacheStatus.textContent = 'STATUS: ' + data.message.toUpperCase();
-        clearCacheStatus.style.color = '#22c55e';
+        clearCacheStatus.style.color = 'var(--success)';
 
         // Refresh UI components
         pollQueueStatus();
@@ -3343,7 +3676,7 @@
         alert('CACHE PURGED & DATABASE CLEANED SUCCESSFULLY!');
       } catch (err) {
         clearCacheStatus.textContent = 'STATUS: ERROR ' + err.message.toUpperCase();
-        clearCacheStatus.style.color = '#ef4444';
+        clearCacheStatus.style.color = 'var(--error)';
         alert('ERROR: ' + err.message);
       } finally {
         btnClearCache.disabled = false;
@@ -3422,7 +3755,7 @@
           });
         }
       } catch (err) {
-        grid.innerHTML = `<div style="color: #ef4444; text-transform: uppercase;">ERROR: ${err.message}</div>`;
+        grid.innerHTML = `<div style="color: var(--error); text-transform: uppercase;">ERROR: ${err.message}</div>`;
       }
     }
 
@@ -3549,7 +3882,7 @@
                 <div style="display: flex; align-items: center; gap: 0.75rem;">
                   <span style="font-size: 1.15rem; font-weight: 700; text-transform: uppercase;">${s.name}</span>
                   <span class="badge-tag ${isConn ? 'accent' : ''}">${s.type.toUpperCase()}</span>
-                  <span style="font-size: 0.75rem; font-weight: 700; color: ${isConn ? '#22c55e' : '#ef4444'}; text-transform: uppercase;">
+                  <span style="font-size: 0.75rem; font-weight: 700; color: ${isConn ? 'var(--success)' : 'var(--error)'}; text-transform: uppercase;">
                     &bull; ${s.status.toUpperCase()}
                   </span>
                 </div>
@@ -3578,7 +3911,7 @@
         });
 
       } catch (err) {
-        list.innerHTML = `<div style="color: #ef4444; text-transform: uppercase;">ERROR: ${err.message}</div>`;
+        list.innerHTML = `<div style="color: var(--error); text-transform: uppercase;">ERROR: ${err.message}</div>`;
       }
     }
 
@@ -3785,14 +4118,14 @@
         const data = await res.json();
         if (data.success) {
           statusEl.textContent = `STATUS: SUCCESS (200 OK)\n\nOUTPUT:\n${data.output}`;
-          statusEl.style.borderColor = '#22c55e';
+          statusEl.style.borderColor = 'var(--success)';
         } else {
           statusEl.textContent = `STATUS: FAILED\n\nERROR:\n${data.error}`;
-          statusEl.style.borderColor = '#ef4444';
+          statusEl.style.borderColor = 'var(--error)';
         }
       } catch (err) {
         statusEl.textContent = `STATUS: NETWORK ERROR\n\n${err.message}`;
-        statusEl.style.borderColor = '#ef4444';
+        statusEl.style.borderColor = 'var(--error)';
       }
     });
 
@@ -3916,7 +4249,7 @@
           });
           if (!res.ok) throw new Error('Failed to estimate');
           const data = await res.json();
-          budgetBadge.innerHTML = `PRE-FLIGHT: <strong style="color: var(--accent);">${data.text_tokens.toLocaleString()} TOKENS</strong> (${data.formatted_percent} CTX) &bull; EST. ${data.formatted_cost}`;
+          budgetBadge.innerHTML = `PRE-FLIGHT: <strong style="color: var(--accent-text);">${data.text_tokens.toLocaleString()} TOKENS</strong> (${data.formatted_percent} CTX) &bull; EST. ${data.formatted_cost}`;
         } catch (e) {
           // Client-side fallback: ~4 characters per token
           const approxTokens = Math.max(1, Math.round(fullContextText.length / 4));
@@ -3929,7 +4262,18 @@
 
     document.getElementById('agentPromptInput')?.addEventListener('input', updateStudioPreflightBudget);
     document.getElementById('markdownText')?.addEventListener('input', updateStudioPreflightBudget);
-    document.getElementById('modelSelect')?.addEventListener('change', updateStudioPreflightBudget);
+    document.getElementById('modelSelect')?.addEventListener('change', () => {
+      updateStudioPreflightBudget();
+      if (window.currentStudioDocData) {
+        const chosenModel = document.getElementById('modelSelect')?.value || '';
+        const mInfo = window.CACHED_MODELS_MAP[chosenModel] || {};
+        const newLimit = mInfo.context_window || window.currentStudioDocData.context_limit || 128000;
+        const pTok = window.currentStudioDocData.prompt_tokens || 0;
+        const cTok = window.currentStudioDocData.completion_tokens || 0;
+        const tTok = window.currentStudioDocData.total_tokens || (pTok + cTok);
+        updateContextTelemetry(pTok, cTok, tTok, newLimit, chosenModel);
+      }
+    });
 
     // Sandbox Tiktoken Estimator Action
     document.getElementById('btnTestTokenizer')?.addEventListener('click', async () => {
@@ -3960,14 +4304,15 @@ TOTAL PRE-FLIGHT TOKENS: ${d.total_estimated_tokens.toLocaleString()}
 CONTEXT WINDOW CEILING: ${d.context_limit.toLocaleString()} TOKENS (LOADED FROM API)
 CONTEXT WINDOW UTILIZED: ${d.formatted_percent}
 ESTIMATED COST (USD): ${d.formatted_cost}`;
-        statusEl.style.borderColor = '#22c55e';
+        statusEl.style.borderColor = 'var(--success)';
       } catch (err) {
         statusEl.textContent = `STATUS: ERROR - ${err.message}`;
-        statusEl.style.borderColor = '#ef4444';
+        statusEl.style.borderColor = 'var(--error)';
       }
     });
 
     // Initial pre-load of skills, MCP servers, and dynamic AI models
+    updateContextTelemetry(0, 0, 0, 128000);
     loadSkills();
     loadMcpServers();
     loadAiModels();

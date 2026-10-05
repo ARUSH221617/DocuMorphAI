@@ -2,6 +2,14 @@
 
 Turn PDFs and images into Microsoft Word (`.docx`) documents with native editable equations and vector graphics.
 
+[English](README.md) • [راهنمای فارسی](README.fa.md)
+
+---
+
+![DocuMorph AI - Kinetic Typography Dashboard](assets/dashboard.png)
+
+![DocuMorph AI - Studio Inspector & Real-Time Context Telemetry](assets/dashboard-studio.png)
+
 ---
 
 ## Features
