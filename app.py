@@ -153,7 +153,9 @@ def execute_conversion_job(task_id: str, file_path: str, filename: str, mode: st
         duration_sec = round(finish_time - start_time, 2)
         prompt_tokens = res.get("prompt_tokens", 0)
         completion_tokens = res.get("completion_tokens", 0)
+        total_tokens = prompt_tokens + completion_tokens
         cost_usd = db.calculate_cost(chosen_model, prompt_tokens, completion_tokens)
+        ctx_usage = db.calculate_context_usage(chosen_model, prompt_tokens, completion_tokens)
 
         res["duration_sec"] = duration_sec
         res["formatted_duration"] = db.format_duration(duration_sec)
@@ -161,7 +163,11 @@ def execute_conversion_job(task_id: str, file_path: str, filename: str, mode: st
         res["formatted_cost"] = db.format_cost(cost_usd)
         res["prompt_tokens"] = prompt_tokens
         res["completion_tokens"] = completion_tokens
-        res["total_tokens"] = prompt_tokens + completion_tokens
+        res["total_tokens"] = total_tokens
+        res["context_limit"] = ctx_usage["context_limit"]
+        res["context_percent"] = ctx_usage["context_percent"]
+        res["formatted_context_usage"] = ctx_usage["formatted_summary"]
+        res["context_usage"] = ctx_usage
 
         svg_data = []
         for svg_p in res.get("svg_paths", []):
@@ -201,7 +207,11 @@ def execute_conversion_job(task_id: str, file_path: str, filename: str, mode: st
             "duration_sec": duration_sec,
             "formatted_duration": res["formatted_duration"],
             "cost_usd": cost_usd,
-            "formatted_cost": res["formatted_cost"]
+            "formatted_cost": res["formatted_cost"],
+            "total_tokens": total_tokens,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "context_usage": ctx_usage
         })
     except Exception as e:
         import traceback
@@ -426,6 +436,11 @@ async def get_queue_status():
             duration = j.get("duration_sec") or 0.0
 
         cost = j.get("cost_usd") or 0.0
+        p_tok = j.get("prompt_tokens") or 0
+        c_tok = j.get("completion_tokens") or 0
+        t_tok = j.get("total_tokens") or (p_tok + c_tok)
+        ctx_info = db.calculate_context_usage(j.get("model", ""), p_tok, c_tok)
+
         job_items.append({
             "id": j["id"],
             "filename": j["filename"],
@@ -438,14 +453,24 @@ async def get_queue_status():
             "formatted_duration": db.format_duration(duration),
             "cost_usd": cost,
             "formatted_cost": db.format_cost(cost),
+            "prompt_tokens": p_tok,
+            "completion_tokens": c_tok,
+            "total_tokens": t_tok,
+            "context_limit": ctx_info["context_limit"],
+            "context_percent": ctx_info["context_percent"],
+            "formatted_tokens": ctx_info["formatted_tokens"],
+            "formatted_context": ctx_info["formatted_summary"],
             "created_at": j["created_at"],
             "formatted_time": time.strftime("%H:%M:%S", time.localtime(j["created_at"]))
         })
 
+    token_agg = db.get_total_tokens_consumed()
     return JSONResponse(content={
         "active_workers": active_count,
         "max_concurrent": max_workers,
         "total_jobs": len(jobs),
+        "total_tokens_consumed": token_agg["total_tokens"],
+        "formatted_total_tokens": f"{token_agg['total_tokens']:,}",
         "jobs": job_items
     })
 
@@ -529,7 +554,9 @@ Follow strict document formatting:
         usage = getattr(resp, "usage", None)
         p_tok = getattr(usage, "prompt_tokens", 0) if usage else len(req.markdown) // 4
         c_tok = getattr(usage, "completion_tokens", 0) if usage else len(new_md) // 4
+        t_tok = p_tok + c_tok
         cost_usd = db.calculate_cost(model, p_tok, c_tok)
+        ctx_usage = db.calculate_context_usage(model, p_tok, c_tok)
 
         # Update saved markdown file
         if req.base_name:
@@ -576,6 +603,11 @@ Follow strict document formatting:
             "formatted_duration": db.format_duration(duration_sec),
             "cost_usd": cost_usd,
             "formatted_cost": db.format_cost(cost_usd),
+            "prompt_tokens": p_tok,
+            "completion_tokens": c_tok,
+            "total_tokens": t_tok,
+            "context_usage": ctx_usage,
+            "formatted_context_usage": ctx_usage["formatted_summary"],
             "chat": db.get_chat_history(req.base_name) if req.base_name else [],
             "steps": edit_steps
         })
@@ -719,6 +751,11 @@ async def get_history():
         job_meta = db.get_job_by_basename(base)
         duration_sec = (job_meta.get("duration_sec") or 0.0) if job_meta else 0.0
         cost_usd = (job_meta.get("cost_usd") or 0.0) if job_meta else 0.0
+        p_tokens = (job_meta.get("prompt_tokens") or 0) if job_meta else 0
+        c_tokens = (job_meta.get("completion_tokens") or 0) if job_meta else 0
+        t_tokens = (job_meta.get("total_tokens") or (p_tokens + c_tokens)) if job_meta else 0
+        m_name = (job_meta.get("model") or "") if job_meta else ""
+        ctx_info = db.calculate_context_usage(m_name, p_tokens, c_tokens)
 
         documents.append({
             "base_name": base,
@@ -735,6 +772,12 @@ async def get_history():
             "formatted_duration": db.format_duration(duration_sec),
             "cost_usd": cost_usd,
             "formatted_cost": db.format_cost(cost_usd),
+            "prompt_tokens": p_tokens,
+            "completion_tokens": c_tokens,
+            "total_tokens": t_tokens,
+            "context_limit": ctx_info["context_limit"],
+            "context_percent": ctx_info["context_percent"],
+            "formatted_context_usage": ctx_info["formatted_summary"],
             "mtime": mtime,
             "formatted_time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(mtime)) if mtime else "N/A"
         })
@@ -742,6 +785,8 @@ async def get_history():
     documents.sort(key=lambda d: d["mtime"], reverse=True)
     total_cost = sum(d.get("cost_usd", 0.0) for d in documents)
     total_duration = sum(d.get("duration_sec", 0.0) for d in documents)
+    token_agg = db.get_total_tokens_consumed()
+
     return {
         "documents": documents,
         "total_docs": len(documents),
@@ -750,6 +795,10 @@ async def get_history():
         "formatted_total_cost": db.format_cost(total_cost),
         "total_duration": total_duration,
         "formatted_total_duration": db.format_duration(total_duration),
+        "total_tokens": token_agg["total_tokens"],
+        "formatted_total_tokens": f"{token_agg['total_tokens']:,}",
+        "prompt_tokens": token_agg["prompt_tokens"],
+        "completion_tokens": token_agg["completion_tokens"],
         "output_path": str(OUTPUT_DIR)
     }
 
@@ -780,6 +829,11 @@ async def get_history_document(base_name: str):
     job_meta = db.get_job_by_basename(base_name)
     duration_sec = (job_meta.get("duration_sec") or 0.0) if job_meta else 0.0
     cost_usd = (job_meta.get("cost_usd") or 0.0) if job_meta else 0.0
+    p_tokens = (job_meta.get("prompt_tokens") or 0) if job_meta else 0
+    c_tokens = (job_meta.get("completion_tokens") or 0) if job_meta else 0
+    t_tokens = (job_meta.get("total_tokens") or (p_tokens + c_tokens)) if job_meta else 0
+    m_name = (job_meta.get("model") or "") if job_meta else ""
+    ctx_info = db.calculate_context_usage(m_name, p_tokens, c_tokens)
 
     steps = []
     if job_meta and job_meta.get("result"):
@@ -806,6 +860,13 @@ async def get_history_document(base_name: str):
         "formatted_duration": db.format_duration(duration_sec),
         "cost_usd": cost_usd,
         "formatted_cost": db.format_cost(cost_usd),
+        "prompt_tokens": p_tokens,
+        "completion_tokens": c_tokens,
+        "total_tokens": t_tokens,
+        "context_limit": ctx_info["context_limit"],
+        "context_percent": ctx_info["context_percent"],
+        "formatted_context_usage": ctx_info["formatted_summary"],
+        "context_usage": ctx_info,
         "total_pages": 1,
         "steps": steps
     }

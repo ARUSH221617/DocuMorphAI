@@ -81,7 +81,10 @@ def init_db():
             ("duration_sec", "REAL DEFAULT 0.0"),
             ("cost_usd", "REAL DEFAULT 0.0"),
             ("prompt_tokens", "INTEGER DEFAULT 0"),
-            ("completion_tokens", "INTEGER DEFAULT 0")
+            ("completion_tokens", "INTEGER DEFAULT 0"),
+            ("total_tokens", "INTEGER DEFAULT 0"),
+            ("context_limit", "INTEGER DEFAULT 128000"),
+            ("context_percent", "REAL DEFAULT 0.0")
         ]:
             try:
                 cursor.execute(f"ALTER TABLE jobs ADD COLUMN {col} {col_type}")
@@ -139,6 +142,56 @@ def format_cost(cost_usd: float) -> str:
     if cost_usd < 0.0001:
         return f"${cost_usd:.6f}"
     return f"${cost_usd:.4f}"
+
+def get_model_context_window(model_name: str) -> int:
+    """Return model maximum context window token ceiling."""
+    m = (model_name or "").lower()
+    if "gemini" in m:
+        return 1_048_576  # 1M context
+    elif "claude" in m:
+        return 200_000
+    elif "gpt-4o" in m or "gpt-4" in m:
+        return 128_000
+    elif "deepseek" in m:
+        return 64_000
+    elif "gemma" in m:
+        return 131_072
+    elif "llama" in m or "qwen" in m:
+        return 128_000
+    return 128_000
+
+def calculate_context_usage(model_name: str, prompt_tokens: int, completion_tokens: int = 0) -> Dict[str, Any]:
+    """Calculate token totals and percentage of model context window used."""
+    total = (prompt_tokens or 0) + (completion_tokens or 0)
+    limit = get_model_context_window(model_name)
+    pct = round((total / max(limit, 1)) * 100, 2)
+    return {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total,
+        "context_limit": limit,
+        "context_percent": pct,
+        "formatted_tokens": f"{total:,}",
+        "formatted_limit": f"{limit:,}",
+        "formatted_percent": f"{pct:.2f}%",
+        "formatted_summary": f"{total:,} / {limit:,} ({pct:.2f}%)"
+    }
+
+def get_total_tokens_consumed() -> Dict[str, int]:
+    """Calculate aggregate token consumption across all historical jobs in SQLite."""
+    with get_connection() as conn:
+        row = conn.execute("""
+            SELECT
+                COALESCE(SUM(prompt_tokens), 0) AS total_prompt,
+                COALESCE(SUM(completion_tokens), 0) AS total_completion,
+                COALESCE(SUM(total_tokens), 0) AS total_all
+            FROM jobs
+        """).fetchone()
+        return {
+            "prompt_tokens": int(row["total_prompt"] or 0),
+            "completion_tokens": int(row["total_completion"] or 0),
+            "total_tokens": int(row["total_all"] or 0)
+        }
 
 def clean_db():
     """Wipe jobs and chat_history tables, run VACUUM. Settings preserved."""
@@ -283,6 +336,21 @@ def create_job(job_id: str, filename: str, file_path: str, mode: str = "agent", 
         conn.commit()
 
 def update_job(job_id: str, **kwargs):
+    if "prompt_tokens" in kwargs or "completion_tokens" in kwargs:
+        p_tok = kwargs.get("prompt_tokens", 0) or 0
+        c_tok = kwargs.get("completion_tokens", 0) or 0
+        tot = p_tok + c_tok
+        kwargs["total_tokens"] = tot
+
+        # Determine context limit and percentage
+        model_name = kwargs.get("model")
+        if not model_name:
+            existing = get_job(job_id)
+            model_name = (existing or {}).get("model", "")
+        ctx_info = calculate_context_usage(model_name, p_tok, c_tok)
+        kwargs["context_limit"] = ctx_info["context_limit"]
+        kwargs["context_percent"] = ctx_info["context_percent"]
+
     fields = []
     values = []
     for k, v in kwargs.items():

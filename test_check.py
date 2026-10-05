@@ -145,6 +145,23 @@ def test_dynamic_models():
     assert data["current_model"] in data["models"]
     print("✓ test_dynamic_models passed")
 
+def test_token_and_context_window():
+    import db
+    u = db.calculate_context_usage("ag/gemini-3.8-flash-high", 4000, 1000)
+    assert u["total_tokens"] == 5000
+    assert u["context_limit"] == 1_048_576
+    assert u["context_percent"] == 0.48
+
+    from fastapi.testclient import TestClient
+    import app
+    client = TestClient(app.app)
+    r = client.get('/api/history')
+    assert r.status_code == 200
+    d = r.json()
+    assert "total_tokens" in d
+    assert "formatted_total_tokens" in d
+    print("✓ test_token_and_context_window passed")
+
 if __name__ == "__main__":
     test_latex_to_omml()
     test_persian_detection()
@@ -155,4 +172,5 @@ if __name__ == "__main__":
     test_mcp_system()
     test_agent_steps()
     test_dynamic_models()
+    test_token_and_context_window()
     print("\nAll self-checks passed successfully!")

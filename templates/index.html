@@ -1697,9 +1697,10 @@
         <div class="progress-box" id="progressBox">
           <div class="progress-header">
             <span id="progressTitle">PARALLEL QUEUE DISPATCHER ACTIVE</span>
-            <div style="display: flex; gap: 1.25rem; align-items: center;">
+            <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
               <span id="progressTimer" style="font-family: var(--font-mono); color: var(--accent); font-weight: 700; font-size: 1.05rem;">00:00.0</span>
-              <span id="progressCostBadge" style="font-family: var(--font-mono); color: var(--foreground); font-weight: 700; font-size: 1rem; border: 1px solid var(--border); padding: 0.2rem 0.5rem; background: var(--surface);">$0.0000</span>
+              <span id="progressCostBadge" style="font-family: var(--font-mono); color: var(--foreground); font-weight: 700; font-size: 0.95rem; border: 1px solid var(--border); padding: 0.2rem 0.5rem; background: var(--surface);">$0.0000</span>
+              <span id="progressTokensBadge" style="font-family: var(--font-mono); color: var(--foreground); font-weight: 700; font-size: 0.9rem; border: 1px solid var(--border); padding: 0.2rem 0.5rem; background: var(--surface);">0 TOKENS (0.00% CTX)</span>
               <span id="progressPercent">0%</span>
             </div>
           </div>
@@ -1751,9 +1752,25 @@
         <div class="success-banner">
           <div class="success-info">
             <div class="success-icon">&#10003;</div>
-            <div>
+            <div style="flex: 1;">
               <div class="success-title" id="studioDocTitle">DOCUMENT READY</div>
               <div class="success-subtitle" id="resultStats">PROCESSED PAGES WITH NATIVE OMML FORMULAS &amp; VECTOR SHAPES.</div>
+              
+              <!-- Context Window Usage Meter -->
+              <div id="studioContextMeter" style="margin-top: 1rem; border: 2px solid var(--border); background: var(--surface); padding: 1rem 1.25rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                  <div style="display: flex; align-items: center; gap: 0.6rem;">
+                    <span class="badge-tag accent" style="font-size: 0.7rem;">CONTEXT WINDOW</span>
+                    <span style="font-weight: 700; font-size: 0.9rem; text-transform: uppercase;" id="contextTokensSummary">0 / 128,000 TOKENS (0.00%)</span>
+                  </div>
+                  <div style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted-foreground);" id="contextTokenDetails">
+                    PROMPT: 0 &bull; OUTPUT: 0 &bull; MODEL CEILING: 128,000
+                  </div>
+                </div>
+                <div style="width: 100%; height: 8px; background: var(--muted); border: 1px solid var(--border); overflow: hidden;">
+                  <div id="contextProgressBar" style="height: 100%; width: 0%; background: var(--accent); transition: width 0.3s ease;"></div>
+                </div>
+              </div>
             </div>
           </div>
           <div class="download-group">
@@ -1895,7 +1912,11 @@
           <div class="stat-label">STORAGE CONSUMED</div>
         </div>
         <div class="stat-card">
-          <div class="stat-val" id="statTotalTime" style="color: var(--accent);">0.0s</div>
+          <div class="stat-val" id="statTotalTokens" style="color: var(--accent);">0</div>
+          <div class="stat-label">TOTAL TOKENS PROCESSED</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-val" id="statTotalTime" style="color: var(--foreground);">0.0s</div>
           <div class="stat-label">TOTAL COMPUTE TIME</div>
         </div>
         <div class="stat-card">
@@ -1919,6 +1940,7 @@
               <tr>
                 <th>DOCUMENT NAME</th>
                 <th>TIMESTAMP</th>
+                <th>TOKENS / CTX</th>
                 <th>DURATION</th>
                 <th>EST. PRICE</th>
                 <th>SIZE</th>
@@ -1929,7 +1951,7 @@
             </thead>
             <tbody id="historyTableBody">
               <tr>
-                <td colspan="8" style="text-align: center; color: var(--muted-foreground); text-transform: uppercase;">LOADING ARCHIVAL RECORDS...</td>
+                <td colspan="9" style="text-align: center; color: var(--muted-foreground); text-transform: uppercase;">LOADING ARCHIVAL RECORDS...</td>
               </tr>
             </tbody>
           </table>
@@ -2542,6 +2564,12 @@
             progressBar.style.width = '100%';
             progressPercent.textContent = '100%';
             progressStatus.textContent = 'FINISHED!';
+
+            const tTok = payload.total_tokens || payload.result?.total_tokens || 0;
+            const ctxPct = payload.context_usage?.context_percent || payload.result?.context_percent || 0;
+            const tokBadge = document.getElementById('progressTokensBadge');
+            if (tokBadge) tokBadge.textContent = `${tTok.toLocaleString()} TOKENS (${ctxPct}% CTX)`;
+
             stopJobTimer(payload.formatted_duration || payload.result?.formatted_duration, payload.formatted_cost || payload.result?.formatted_cost);
             eventSource.close();
             localStorage.removeItem('documorph_active_task');
@@ -2706,7 +2734,20 @@
       studioDocTitle.textContent = title;
       const dur = data.formatted_duration || (data.duration_sec ? data.duration_sec + 's' : 'N/A');
       const cost = data.formatted_cost || (data.cost_usd ? '$' + data.cost_usd.toFixed(4) : '$0.0000');
-      resultStats.innerHTML = `TIME: <strong style="color: var(--accent);">${dur}</strong> &bull; EST. PRICE: <strong style="color: var(--accent);">${cost}</strong> &bull; PAGES: ${data.total_pages || 1} &bull; SVGS: ${data.svgs ? data.svgs.length : 0}`;
+      const totTokens = data.total_tokens || ((data.prompt_tokens || 0) + (data.completion_tokens || 0));
+      const pTokens = data.prompt_tokens || 0;
+      const cTokens = data.completion_tokens || 0;
+      const ctxLimit = data.context_limit || 128000;
+      const ctxPct = data.context_percent !== undefined ? data.context_percent : (totTokens ? ((totTokens / ctxLimit) * 100).toFixed(2) : 0);
+
+      resultStats.innerHTML = `TIME: <strong style="color: var(--accent);">${dur}</strong> &bull; EST. PRICE: <strong style="color: var(--accent);">${cost}</strong> &bull; TOKENS: <strong style="color: var(--accent);">${totTokens.toLocaleString()}</strong> (${ctxPct}% CTX) &bull; PAGES: ${data.total_pages || 1} &bull; SVGS: ${data.svgs ? data.svgs.length : 0}`;
+
+      const ctxSummary = document.getElementById('contextTokensSummary');
+      const ctxDetails = document.getElementById('contextTokenDetails');
+      const ctxBar = document.getElementById('contextProgressBar');
+      if (ctxSummary) ctxSummary.textContent = `${totTokens.toLocaleString()} / ${ctxLimit.toLocaleString()} TOKENS (${ctxPct}%)`;
+      if (ctxDetails) ctxDetails.textContent = `PROMPT: ${pTokens.toLocaleString()} \u2022 OUTPUT: ${cTokens.toLocaleString()} \u2022 CEILING: ${ctxLimit.toLocaleString()}`;
+      if (ctxBar) ctxBar.style.width = Math.min(100, Math.max(totTokens > 0 ? 0.8 : 0, ctxPct)) + '%';
 
       btnDownloadDocx.href = `/api/download/${encodeURIComponent(data.docx_name)}`;
       btnDownloadZip.href = `/api/download/${encodeURIComponent(data.zip_name)}`;
@@ -2904,6 +2945,20 @@
         renderPreview(data.markdown);
         agentPromptInput.value = '';
         loadChatHistory(currentBaseName);
+
+        // Update context meter if present
+        if (data.context_usage || data.total_tokens) {
+          const totTokens = data.total_tokens || ((data.prompt_tokens || 0) + (data.completion_tokens || 0));
+          const ctxLimit = data.context_usage?.context_limit || 128000;
+          const ctxPct = data.context_usage?.context_percent !== undefined ? data.context_usage.context_percent : ((totTokens / ctxLimit) * 100).toFixed(2);
+          const ctxSummary = document.getElementById('contextTokensSummary');
+          const ctxDetails = document.getElementById('contextTokenDetails');
+          const ctxBar = document.getElementById('contextProgressBar');
+          if (ctxSummary) ctxSummary.textContent = `${totTokens.toLocaleString()} / ${ctxLimit.toLocaleString()} TOKENS (${ctxPct}%)`;
+          if (ctxDetails) ctxDetails.textContent = `PROMPT: ${(data.prompt_tokens || 0).toLocaleString()} \u2022 OUTPUT: ${(data.completion_tokens || 0).toLocaleString()} \u2022 CEILING: ${ctxLimit.toLocaleString()}`;
+          if (ctxBar) ctxBar.style.width = Math.min(100, Math.max(totTokens > 0 ? 0.8 : 0, ctxPct)) + '%';
+        }
+
         if (data.steps) {
           renderSteps(data.steps);
         }
@@ -3008,6 +3063,7 @@
 
         document.getElementById('statTotalDocs').textContent = data.total_docs;
         document.getElementById('statTotalSize').textContent = formatBytes(data.total_size);
+        document.getElementById('statTotalTokens').textContent = data.formatted_total_tokens || (data.total_tokens ? data.total_tokens.toLocaleString() : '0');
         document.getElementById('statTotalTime').textContent = data.formatted_total_duration || '0.0s';
         document.getElementById('statTotalCost').textContent = data.formatted_total_cost || '$0.0000';
 
@@ -3032,6 +3088,7 @@
             <div style="font-size: 0.75rem; color: var(--muted-foreground); font-family: var(--font-mono);">${doc.base_name}</div>
           </td>
           <td style="font-size: 0.85rem; font-family: var(--font-mono);">${doc.formatted_time}</td>
+          <td style="font-size: 0.85rem; font-family: var(--font-mono);"><span class="badge-tag" style="white-space: nowrap;">${(doc.total_tokens || 0).toLocaleString()} (${doc.context_percent || 0}%)</span></td>
           <td style="font-size: 0.85rem; font-family: var(--font-mono); font-weight: 700; color: var(--accent);">${doc.formatted_duration || 'N/A'}</td>
           <td style="font-size: 0.85rem; font-family: var(--font-mono);"><span class="badge-tag accent">${doc.formatted_cost || '$0.0000'}</span></td>
           <td style="font-size: 0.85rem; font-family: var(--font-mono);">${formatBytes(doc.size)}</td>
