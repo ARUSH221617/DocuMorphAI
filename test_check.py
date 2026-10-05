@@ -133,6 +133,18 @@ def test_agent_steps():
     assert "DOCUMENT VISION" in ag.steps[0]["title"]
     print("✓ test_agent_steps passed")
 
+def test_dynamic_models():
+    from fastapi.testclient import TestClient
+    import app
+    client = TestClient(app.app)
+    resp = client.get('/api/models')
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "models" in data
+    assert len(data["models"]) > 0
+    assert data["current_model"] in data["models"]
+    print("✓ test_dynamic_models passed")
+
 if __name__ == "__main__":
     test_latex_to_omml()
     test_persian_detection()
@@ -142,4 +154,5 @@ if __name__ == "__main__":
     test_skills_system()
     test_mcp_system()
     test_agent_steps()
+    test_dynamic_models()
     print("\nAll self-checks passed successfully!")

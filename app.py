@@ -271,13 +271,60 @@ class RecompileRequest(BaseModel):
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
+    current_model = db.get_setting("AI_DEFAULT_MODEL", engine.AI_DEFAULT_MODEL)
     return templates.TemplateResponse(
         "index.html",
         {
             "request": request,
-            "default_model": engine.AI_DEFAULT_MODEL
+            "default_model": current_model
         }
     )
+
+@app.get("/api/models")
+async def get_models():
+    """Retrieve dynamic list of available models from OpenAI-compatible API endpoint."""
+    current_default = db.get_setting("AI_DEFAULT_MODEL", engine.AI_DEFAULT_MODEL)
+    try:
+        client = engine.get_ai_client()
+        resp = client.models.list()
+        raw_models = []
+        if hasattr(resp, "data") and resp.data:
+            raw_models = [m.id for m in resp.data if hasattr(m, "id") and m.id]
+        elif isinstance(resp, list):
+            raw_models = [getattr(m, "id", str(m)) for m in resp]
+
+        # Deduplicate preserving order
+        seen = set()
+        model_list = []
+        if current_default:
+            model_list.append(current_default)
+            seen.add(current_default)
+
+        for mid in raw_models:
+            if mid not in seen:
+                seen.add(mid)
+                model_list.append(mid)
+
+        return {
+            "success": True,
+            "models": model_list,
+            "current_model": current_default,
+            "count": len(model_list),
+            "source": "api"
+        }
+    except Exception as e:
+        fallback = [
+            current_default
+        ]
+        unique_fallback = list(dict.fromkeys([m for m in fallback if m]))
+        return {
+            "success": False,
+            "models": unique_fallback,
+            "current_model": current_default,
+            "count": len(unique_fallback),
+            "source": "fallback",
+            "error": str(e)
+        }
 
 @app.post("/api/convert")
 async def api_convert(
@@ -303,7 +350,7 @@ async def api_convert(
     for f in upload_list:
         task_id = uuid.uuid4().hex
         file_path = temp_input_dir / f"{task_id}_{f.filename}"
-        
+
         content = await f.read()
         with open(file_path, "wb") as out_f:
             out_f.write(content)
@@ -441,7 +488,7 @@ async def api_agent_edit(req: AgentEditRequest):
         # Log user request
         if req.base_name:
             db.add_chat_message(req.base_name, "user", req.prompt)
-        
+
         # Detect if user requested specific skill or inject domain guidance
         skill_guidance = ""
         for sk in skills.list_skills():
@@ -551,13 +598,13 @@ async def api_recompile(req: RecompileRequest):
         docx_path = str(OUTPUT_DIR / f"{base}.docx")
         svgs_dir = str(OUTPUT_DIR / f"{base}_svgs")
         os.makedirs(svgs_dir, exist_ok=True)
-        
+
         exported_svgs = converter.markdown_to_docx(req.markdown, docx_path, output_dir=svgs_dir)
-        
+
         md_path = str(OUTPUT_DIR / f"{base}.md")
         with open(md_path, "w", encoding="utf-8") as f:
             f.write(req.markdown)
-            
+
         zip_filename = f"{base}_bundle.zip"
         zip_path = str(OUTPUT_DIR / zip_filename)
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
@@ -565,12 +612,12 @@ async def api_recompile(req: RecompileRequest):
             z.write(md_path, arcname=f"{base}.md")
             for svg_f in exported_svgs:
                 z.write(svg_f, arcname=f"svgs/{os.path.basename(svg_f)}")
-                
+
         svg_data = []
         for svg_p in exported_svgs:
             with open(svg_p, "r", encoding="utf-8") as sf:
                 svg_data.append({"name": os.path.basename(svg_p), "content": sf.read()})
-                
+
         return JSONResponse(content={
             "success": True,
             "base_name": base,
@@ -621,10 +668,10 @@ async def get_history():
     """List all processed documents in OUTPUT_DIR with metadata."""
     if not OUTPUT_DIR.exists():
         return {"documents": [], "total_docs": 0, "total_size": 0}
-        
+
     documents = []
     total_size = 0
-    
+
     # Identify unique base names from .docx or .md files
     seen_bases = set()
     for file_path in OUTPUT_DIR.glob("*.docx"):
@@ -633,13 +680,13 @@ async def get_history():
     for file_path in OUTPUT_DIR.glob("*.md"):
         base = file_path.stem
         seen_bases.add(base)
-        
+
     for base in sorted(seen_bases):
         docx_f = OUTPUT_DIR / f"{base}.docx"
         md_f = OUTPUT_DIR / f"{base}.md"
         zip_f = OUTPUT_DIR / f"{base}_bundle.zip"
         svgs_dir = OUTPUT_DIR / f"{base}_svgs"
-        
+
         doc_size = 0
         mtime = 0
         if docx_f.exists():
@@ -654,15 +701,15 @@ async def get_history():
             st = zip_f.stat()
             doc_size += st.st_size
             mtime = max(mtime, st.st_mtime)
-            
+
         svg_count = 0
         if svgs_dir.is_dir():
             for sf in svgs_dir.glob("*.svg"):
                 svg_count += 1
                 doc_size += sf.stat().st_size
-                
+
         total_size += doc_size
-        
+
         # Display title: strip uuid prefix if present
         display_title = base
         parts = base.split("_", 1)
@@ -672,7 +719,7 @@ async def get_history():
         job_meta = db.get_job_by_basename(base)
         duration_sec = (job_meta.get("duration_sec") or 0.0) if job_meta else 0.0
         cost_usd = (job_meta.get("cost_usd") or 0.0) if job_meta else 0.0
-            
+
         documents.append({
             "base_name": base,
             "display_title": display_title,
@@ -691,7 +738,7 @@ async def get_history():
             "mtime": mtime,
             "formatted_time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(mtime)) if mtime else "N/A"
         })
-        
+
     documents.sort(key=lambda d: d["mtime"], reverse=True)
     total_cost = sum(d.get("cost_usd", 0.0) for d in documents)
     total_duration = sum(d.get("duration_sec", 0.0) for d in documents)
@@ -713,15 +760,15 @@ async def get_history_document(base_name: str):
     docx_file = OUTPUT_DIR / f"{base_name}.docx"
     zip_file = OUTPUT_DIR / f"{base_name}_bundle.zip"
     svgs_dir = OUTPUT_DIR / f"{base_name}_svgs"
-    
+
     if not (md_file.exists() or docx_file.exists()):
         raise HTTPException(status_code=404, detail="Document not found")
-        
+
     md_content = ""
     if md_file.exists():
         with open(md_file, "r", encoding="utf-8") as f:
             md_content = f.read()
-            
+
     svg_data = []
     svgs = []
     if svgs_dir.is_dir():
@@ -772,12 +819,12 @@ async def delete_history_document(base_name: str):
         if f.exists():
             f.unlink()
             deleted_files.append(f.name)
-            
+
     svgs_dir = OUTPUT_DIR / f"{base_name}_svgs"
     if svgs_dir.is_dir():
         shutil.rmtree(svgs_dir, ignore_errors=True)
         deleted_files.append(f"{base_name}_svgs/")
-        
+
     return {"success": True, "base_name": base_name, "deleted": deleted_files}
 
 @app.post("/api/tools/validate-latex")
@@ -1071,7 +1118,7 @@ def main():
         print(f"Starting DocuMorph AI Web App on http://localhost:{args.port} [Auto-Reload: {'ENABLED' if args.reload else 'DISABLED'}]")
         if not args.no_browser and os.environ.get("UVICORN_STARTED") != "1":
             threading.Timer(1.5, lambda: open_browser(args.port)).start()
-        
+
         # Ensure base directory in sys.path for uvicorn module loader
         if str(BASE_DIR) not in sys.path:
             sys.path.insert(0, str(BASE_DIR))
