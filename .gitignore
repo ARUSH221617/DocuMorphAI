@@ -1,0 +1,39 @@
+# Secrets & Environment
+.env
+*.env
+!.env.example
+
+# SQLite Databases & Local Storage
+*.db
+*.sqlite
+*.sqlite3
+documorph.db
+
+# Python caches & build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.spec
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Project Inputs & Outputs
+input/*
+!input/.gitkeep
+output/*
+!output/.gitkeep
+
+# IDEs & Operating System
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

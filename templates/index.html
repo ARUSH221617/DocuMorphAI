@@ -1,0 +1,3729 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DOCUMORPH // KINETIC AI DASHBOARD &bull; PDF &amp; PICTURE TO WORD</title>
+
+  <!-- Space Grotesk (Primary Kinetic), Vazirmatn (Persian RTL), Fira Code (Mono) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Vazirmatn:wght@400;500;600;700&family=Fira+Code:wght@400;500;700&display=swap" rel="stylesheet">
+
+  <!-- KaTeX for live formula preview -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+
+  <!-- Marked.js for markdown rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <style>
+    /* Kinetic Typography Design Tokens: Light Theme (Default) */
+    :root {
+      --background: #FAFAFA;
+      --foreground: #09090B;
+      --surface: #FFFFFF;
+      --surface-alt: #F4F4F5;
+      --muted: #E4E4E7;
+      --muted-foreground: #71717A;
+      --accent: #DFE104;
+      --accent-hover: #CDCF00;
+      --accent-foreground: #000000;
+      --border: #18181B;
+      --border-subtle: #D4D4D8;
+      --font-display: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-persian: 'Vazirmatn', 'Space Grotesk', sans-serif;
+      --font-mono: 'Fira Code', monospace;
+    }
+
+    /* Dark Theme Override */
+    body.theme-dark {
+      --background: #09090B;
+      --foreground: #FAFAFA;
+      --surface: #121217;
+      --surface-alt: #1A1A22;
+      --muted: #27272A;
+      --muted-foreground: #A1A1AA;
+      --accent: #DFE104;
+      --accent-hover: #F0F200;
+      --accent-foreground: #000000;
+      --border: #3F3F46;
+      --border-subtle: #27272A;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      border-radius: 0 !important; /* Brutalist 0px radius */
+    }
+
+    ::selection {
+      background-color: var(--accent);
+      color: var(--accent-foreground);
+    }
+
+    body {
+      background-color: var(--background);
+      color: var(--foreground);
+      font-family: var(--font-display);
+      line-height: 1.5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+      transition: background-color 0.2s ease, color 0.2s ease;
+    }
+
+    /* SVG Noise Texture Overlay */
+    .kinetic-noise {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 9999;
+      opacity: 0.03;
+      mix-blend-mode: overlay;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+    }
+
+    /* Motion Accessibility Fallback */
+    @media (prefers-reduced-motion: reduce) {
+      *, ::before, ::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+      .marquee-track {
+        animation: none !important;
+      }
+    }
+
+    /* Infinite Marquee */
+    .marquee-container {
+      width: 100%;
+      overflow: hidden;
+      white-space: nowrap;
+      border-top: 2px solid var(--border);
+      border-bottom: 2px solid var(--border);
+      background: var(--background);
+      position: relative;
+      user-select: none;
+    }
+
+    .marquee-container.accent {
+      background: var(--accent);
+      color: var(--accent-foreground);
+      border-color: #000000;
+    }
+
+    .marquee-track {
+      display: inline-flex;
+      width: fit-content;
+      animation: marquee-scroll var(--marquee-speed, 24s) linear infinite;
+      will-change: transform;
+    }
+
+    .marquee-track.reverse {
+      animation-direction: reverse;
+    }
+
+    .marquee-content {
+      display: inline-flex;
+      align-items: center;
+      gap: 2.5rem;
+      padding-right: 2.5rem;
+      font-weight: 700;
+      font-size: 1.1rem;
+      letter-spacing: -0.04em;
+      text-transform: uppercase;
+    }
+
+    @keyframes marquee-scroll {
+      0% { transform: translateX(0%); }
+      100% { transform: translateX(-50%); }
+    }
+
+    /* App Header */
+    header {
+      background: var(--surface);
+      border-bottom: 2px solid var(--border);
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1.25rem;
+      width: 100%;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: baseline;
+      gap: 0.75rem;
+    }
+
+    .brand-title {
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: -0.05em;
+      text-transform: uppercase;
+      color: var(--foreground);
+    }
+
+    .brand-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      background: var(--accent);
+      border: 1px solid #000000;
+      margin-left: 2px;
+    }
+
+    .brand-subtitle {
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--muted-foreground);
+    }
+
+    /* Main Navigation Tabs */
+    .nav-tabs {
+      display: flex;
+      gap: 0;
+      border: 2px solid var(--border);
+      background: var(--background);
+    }
+
+    .nav-btn {
+      padding: 0.65rem 1.4rem;
+      background: transparent;
+      border: none;
+      border-right: 2px solid var(--border);
+      font-family: var(--font-display);
+      font-size: 0.85rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--muted-foreground);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.15s ease;
+    }
+
+    .nav-btn:last-child {
+      border-right: none;
+    }
+
+    .nav-btn:hover {
+      color: var(--foreground);
+      background: var(--muted);
+    }
+
+    .nav-btn.active {
+      background: var(--accent);
+      color: var(--accent-foreground);
+    }
+
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .btn-theme-toggle {
+      background: transparent;
+      border: 2px solid var(--border);
+      color: var(--foreground);
+      padding: 0.55rem 1rem;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-family: var(--font-display);
+      transition: all 0.15s ease;
+    }
+
+    .btn-theme-toggle:hover {
+      background: var(--foreground);
+      color: var(--background);
+    }
+
+    .system-status-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.4rem 0.8rem;
+      border: 2px solid var(--border);
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      background: var(--surface);
+    }
+
+    .status-dot-active {
+      width: 8px;
+      height: 8px;
+      background: #22c55e;
+      border: 1px solid #166534;
+      display: inline-block;
+    }
+
+    /* Main Container */
+    main {
+      flex: 1;
+      max-width: 95vw;
+      width: 100%;
+      margin: 2rem auto;
+      padding: 0 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 2.5rem;
+    }
+
+    /* Views container */
+    .dashboard-view {
+      display: none;
+      flex-direction: column;
+      gap: 2.5rem;
+    }
+
+    .dashboard-view.active {
+      display: flex;
+    }
+
+    /* Hero / Viewport Headline */
+    .hero-section {
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 2rem;
+      position: relative;
+    }
+
+    .hero-meta {
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--muted-foreground);
+      margin-bottom: 0.5rem;
+    }
+
+    .hero-headline {
+      font-size: clamp(2.5rem, 7vw, 6.5rem);
+      font-weight: 700;
+      line-height: 0.88;
+      letter-spacing: -0.05em;
+      text-transform: uppercase;
+      margin-bottom: 1.25rem;
+    }
+
+    .hero-headline .highlight {
+      background: var(--accent);
+      color: #000000;
+      padding: 0 0.4rem;
+      display: inline-block;
+    }
+
+    .hero-desc {
+      font-size: clamp(1rem, 1.8vw, 1.35rem);
+      color: var(--muted-foreground);
+      max-width: 54rem;
+      line-height: 1.35;
+      font-weight: 500;
+    }
+
+    /* Brutalist Card */
+    .card {
+      background: var(--surface);
+      border: 2px solid var(--border);
+      padding: 2.5rem;
+      position: relative;
+      transition: border-color 0.2s ease;
+    }
+
+    .card-watermark {
+      position: absolute;
+      top: 1rem;
+      right: 1.5rem;
+      font-size: clamp(4.5rem, 10vw, 8rem);
+      font-weight: 700;
+      line-height: 1;
+      color: var(--muted);
+      user-select: none;
+      pointer-events: none;
+      letter-spacing: -0.05em;
+      opacity: 0.6;
+    }
+
+    .card-header {
+      margin-bottom: 2rem;
+      position: relative;
+      z-index: 2;
+    }
+
+    .card-title {
+      font-size: clamp(1.4rem, 3vw, 2.4rem);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: -0.04em;
+      line-height: 1.1;
+      margin-bottom: 0.5rem;
+    }
+
+    .card-desc {
+      font-size: 0.95rem;
+      color: var(--muted-foreground);
+      max-width: 48rem;
+    }
+
+    /* Drag & Drop Upload Zone */
+    .upload-zone {
+      border: 2px dashed var(--border);
+      padding: 3.5rem 2rem;
+      text-align: center;
+      background: var(--surface-alt);
+      cursor: pointer;
+      position: relative;
+      transition: all 0.2s ease;
+    }
+
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: var(--accent);
+      background: var(--surface);
+      border-style: solid;
+    }
+
+    .upload-icon {
+      width: 60px;
+      height: 60px;
+      margin: 0 auto 1.25rem;
+      background: var(--muted);
+      border: 2px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--foreground);
+    }
+
+    .upload-text-main {
+      font-size: 1.4rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: -0.03em;
+      margin-bottom: 0.35rem;
+    }
+
+    .upload-text-sub {
+      font-size: 0.85rem;
+      color: var(--muted-foreground);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-weight: 600;
+    }
+
+    .file-input {
+      display: none;
+    }
+
+    /* Selected File Info */
+    .file-info {
+      display: none;
+      margin-top: 1.5rem;
+      padding: 1.25rem 1.75rem;
+      background: var(--surface-alt);
+      border: 2px solid var(--border);
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .file-details {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+    }
+
+    .file-type-icon {
+      width: 44px;
+      height: 44px;
+      background: var(--accent);
+      color: var(--accent-foreground);
+      border: 2px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.9rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+
+    .file-name {
+      font-weight: 700;
+      font-size: 1.15rem;
+      text-transform: uppercase;
+      letter-spacing: -0.02em;
+    }
+
+    .file-size {
+      font-size: 0.8rem;
+      color: var(--muted-foreground);
+      font-family: var(--font-mono);
+      margin-top: 0.2rem;
+    }
+
+    .btn-remove {
+      background: transparent;
+      border: 2px solid #ef4444;
+      color: #ef4444;
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 0.5rem 1rem;
+      transition: all 0.2s ease;
+      font-family: var(--font-display);
+    }
+
+    .btn-remove:hover {
+      background: #ef4444;
+      color: #ffffff;
+    }
+
+    /* Options Row */
+    .options-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+      margin-top: 2rem;
+    }
+
+    .option-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .option-label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--muted-foreground);
+    }
+
+    .form-select, .form-input {
+      height: 54px;
+      padding: 0 1rem;
+      border: 2px solid var(--border);
+      font-size: 0.95rem;
+      background: var(--background);
+      color: var(--foreground);
+      font-family: var(--font-display);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: -0.02em;
+      outline: none;
+      transition: border-color 0.2s ease;
+    }
+
+    .form-select:focus, .form-input:focus {
+      border-color: var(--accent);
+    }
+
+    /* Action Row */
+    .action-row {
+      margin-top: 2.5rem;
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    /* Kinetic Buttons */
+    .btn-primary {
+      background: var(--accent);
+      color: var(--accent-foreground);
+      border: 2px solid #000000;
+      height: 56px;
+      padding: 0 2.5rem;
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: -0.04em;
+      text-transform: uppercase;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.75rem;
+      transition: transform 0.15s ease, background 0.15s ease;
+      font-family: var(--font-display);
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      transform: scale(1.03);
+      background: var(--accent-hover);
+    }
+
+    .btn-primary:active:not(:disabled) {
+      transform: scale(0.97);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      border-color: var(--border-subtle);
+      background: var(--muted);
+      color: var(--muted-foreground);
+    }
+
+    .btn-secondary {
+      height: 54px;
+      padding: 0 1.5rem;
+      background: transparent;
+      border: 2px solid var(--border);
+      color: var(--foreground);
+      font-size: 0.85rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      text-transform: uppercase;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.15s ease;
+      font-family: var(--font-display);
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: var(--foreground);
+      color: var(--background);
+    }
+
+    /* Progress Box */
+    .progress-box {
+      display: none;
+      margin-top: 2rem;
+      padding: 1.75rem;
+      background: var(--surface-alt);
+      border: 2px solid var(--border);
+    }
+
+    .progress-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 0.75rem;
+      font-size: 0.95rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      text-transform: uppercase;
+      color: var(--foreground);
+    }
+
+    .progress-bar-container {
+      width: 100%;
+      height: 12px;
+      background: var(--muted);
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: var(--accent);
+      transition: width 0.25s linear;
+    }
+
+    .progress-status {
+      margin-top: 0.75rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--muted-foreground);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* Recent Jobs Mini-Section in Workspace */
+    .recent-jobs-strip {
+      margin-top: 2rem;
+      border-top: 2px solid var(--border);
+      padding-top: 1.5rem;
+    }
+
+    .recent-jobs-header {
+      font-size: 0.85rem;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--muted-foreground);
+      margin-bottom: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .recent-jobs-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1rem;
+    }
+
+    .recent-job-item {
+      border: 2px solid var(--border);
+      padding: 1rem;
+      background: var(--background);
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .recent-job-item:hover {
+      border-color: var(--accent);
+      background: var(--surface);
+    }
+
+    .recent-job-title {
+      font-weight: 700;
+      font-size: 0.95rem;
+      text-transform: uppercase;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .recent-job-meta {
+      font-size: 0.75rem;
+      color: var(--muted-foreground);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    /* STUDIO VIEW STYLES */
+    .studio-container {
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+    }
+
+    .success-banner {
+      background: var(--accent);
+      color: #000000;
+      border: 2px solid #000000;
+      padding: 1.5rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1.5rem;
+    }
+
+    .success-info {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .success-icon {
+      background: #000000;
+      color: var(--accent);
+      width: 38px;
+      height: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 1.2rem;
+    }
+
+    .success-title {
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: -0.04em;
+      text-transform: uppercase;
+      line-height: 1.1;
+    }
+
+    .success-subtitle {
+      font-size: 0.85rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      opacity: 0.85;
+    }
+
+    .download-group {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .btn-download {
+      background: transparent;
+      border: 2px solid #000000;
+      color: #000000;
+      padding: 0.7rem 1.2rem;
+      font-size: 0.85rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      text-transform: uppercase;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.15s ease;
+      font-family: var(--font-display);
+    }
+
+    .btn-download:hover {
+      background: #000000;
+      color: var(--accent);
+    }
+
+    .btn-download.primary {
+      background: #000000;
+      color: var(--accent);
+      border-color: #000000;
+    }
+
+    .btn-download.primary:hover {
+      background: transparent;
+      color: #000000;
+    }
+
+    /* Agent Interactive Bar */
+    .agent-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      background: var(--surface-alt);
+      border: 2px solid var(--border);
+      padding: 1.75rem;
+    }
+
+    .agent-title {
+      font-weight: 700;
+      font-size: 1rem;
+      text-transform: uppercase;
+      letter-spacing: -0.02em;
+      color: var(--foreground);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .agent-controls {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .agent-input {
+      flex: 1;
+      min-width: 260px;
+      height: 54px;
+      padding: 0 1.25rem;
+      border: 2px solid var(--border);
+      background: var(--background);
+      color: var(--foreground);
+      font-size: 0.95rem;
+      font-family: var(--font-display);
+      outline: none;
+      transition: border-color 0.2s ease;
+    }
+
+    .agent-input:focus {
+      border-color: var(--accent);
+    }
+
+    /* Studio Sub-Tabs */
+    .studio-tabs-header {
+      display: flex;
+      border-bottom: 2px solid var(--border);
+      gap: 0;
+      overflow-x: auto;
+    }
+
+    .studio-tab-btn {
+      padding: 0.9rem 1.6rem;
+      background: transparent;
+      border: none;
+      border-bottom: 3px solid transparent;
+      color: var(--muted-foreground);
+      font-weight: 700;
+      font-size: 0.9rem;
+      letter-spacing: -0.02em;
+      text-transform: uppercase;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.15s ease;
+      font-family: var(--font-display);
+    }
+
+    .studio-tab-btn:hover {
+      color: var(--foreground);
+    }
+
+    .studio-tab-btn.active {
+      color: var(--foreground);
+      border-bottom-color: var(--accent);
+      background: var(--surface-alt);
+    }
+
+    .studio-tab-pane {
+      display: none;
+    }
+
+    .studio-tab-pane.active {
+      display: block;
+    }
+
+    /* Document Preview Container */
+    .document-preview-wrapper {
+      border: 2px solid var(--border);
+      background: var(--surface-alt);
+      padding: 1.5rem;
+    }
+
+    .document-preview {
+      padding: 3rem;
+      background: #ffffff;
+      color: #0f172a;
+      direction: rtl;
+      font-family: var(--font-persian);
+      line-height: 1.8;
+      max-height: 750px;
+      overflow-y: auto;
+      border: 1px solid #cbd5e1;
+    }
+
+    .document-preview[dir="ltr"] {
+      direction: ltr;
+      text-align: left;
+    }
+
+    .document-preview h1, .document-preview h2, .document-preview h3 {
+      color: #0f172a;
+      margin-top: 1.5rem;
+      margin-bottom: 0.75rem;
+      font-weight: 700;
+    }
+
+    .document-preview table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.5rem 0;
+      direction: rtl;
+    }
+
+    .document-preview th, .document-preview td {
+      border: 1.5px solid #000000;
+      padding: 0.75rem 1rem;
+      vertical-align: middle;
+    }
+
+    .document-preview th {
+      background: #f1f5f9;
+      font-weight: 700;
+    }
+
+    .document-preview svg {
+      display: block;
+      margin: 1.5rem auto;
+      max-width: 100%;
+      height: auto;
+      background: white;
+      border: 2px solid #000000;
+      padding: 0.75rem;
+    }
+
+    /* SVG Gallery */
+    .svg-tip {
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #000000;
+      background: var(--accent);
+      padding: 0.75rem 1.25rem;
+      margin-bottom: 1.5rem;
+      border: 2px solid #000000;
+    }
+
+    .svg-gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .svg-card {
+      background: var(--surface);
+      border: 2px solid var(--border);
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      transition: all 0.2s ease;
+    }
+
+    .svg-card:hover {
+      border-color: var(--accent);
+    }
+
+    .svg-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 0.75rem;
+    }
+
+    .svg-title {
+      font-weight: 700;
+      font-size: 0.95rem;
+      letter-spacing: -0.02em;
+      text-transform: uppercase;
+      color: var(--foreground);
+    }
+
+    .svg-card-body {
+      background: #ffffff;
+      padding: 1rem;
+      min-height: 200px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--border);
+    }
+
+    .svg-card-body svg {
+      max-width: 100%;
+      max-height: 240px;
+      height: auto;
+    }
+
+    /* Markdown Editor */
+    .markdown-view {
+      position: relative;
+    }
+
+    .markdown-textarea {
+      width: 100%;
+      height: 480px;
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      padding: 1.25rem;
+      border: 2px solid var(--border);
+      background: var(--surface-alt);
+      color: var(--foreground);
+      resize: vertical;
+      line-height: 1.6;
+      outline: none;
+    }
+
+    .markdown-textarea:focus {
+      border-color: var(--accent);
+    }
+
+    .btn-copy {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      background: var(--accent);
+      color: #000000;
+      border: 1px solid #000000;
+      padding: 0.5rem 1rem;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      text-transform: uppercase;
+      cursor: pointer;
+      font-family: var(--font-display);
+    }
+
+    .btn-copy:hover {
+      background: var(--accent-hover);
+    }
+
+    /* LIBRARY / HISTORY VIEW STYLES */
+    .history-stats-bar {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .stat-card {
+      border: 2px solid var(--border);
+      padding: 1.5rem;
+      background: var(--surface);
+    }
+
+    .stat-val {
+      font-size: clamp(2rem, 4vw, 3.25rem);
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -0.05em;
+      color: var(--foreground);
+      margin-bottom: 0.35rem;
+    }
+
+    .stat-label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--muted-foreground);
+    }
+
+    .history-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.5rem;
+    }
+
+    .search-input {
+      flex: 1;
+      max-width: 400px;
+      height: 48px;
+      padding: 0 1rem;
+      border: 2px solid var(--border);
+      background: var(--background);
+      color: var(--foreground);
+      font-family: var(--font-display);
+      font-size: 0.9rem;
+      outline: none;
+    }
+
+    .history-table-container {
+      width: 100%;
+      overflow-x: auto;
+      border: 2px solid var(--border);
+    }
+
+    .history-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    .history-table th, .history-table td {
+      padding: 1.1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .history-table th {
+      background: var(--surface-alt);
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--foreground);
+      border-bottom: 2px solid var(--border);
+    }
+
+    .history-table tr:hover td {
+      background: var(--muted);
+    }
+
+    .badge-tag {
+      display: inline-block;
+      padding: 0.2rem 0.55rem;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      border: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .badge-tag.accent {
+      background: var(--accent);
+      color: #000000;
+      border-color: #000000;
+    }
+
+    .table-actions {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .btn-action-small {
+      padding: 0.4rem 0.75rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--foreground);
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      transition: all 0.15s ease;
+    }
+
+    .btn-action-small:hover {
+      background: var(--foreground);
+      color: var(--background);
+    }
+
+    .btn-action-small.danger {
+      border-color: #ef4444;
+      color: #ef4444;
+    }
+
+    .btn-action-small.danger:hover {
+      background: #ef4444;
+      color: #ffffff;
+    }
+
+    /* TOOLS / SANDBOX VIEW */
+    .tools-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+      gap: 2rem;
+    }
+
+    .tool-box {
+      border: 2px solid var(--border);
+      padding: 2rem;
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .tool-box-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: -0.03em;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .tool-preview-box {
+      min-height: 120px;
+      padding: 1.25rem;
+      background: #ffffff;
+      color: #000000;
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+    }
+
+    .tool-status-text {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      padding: 0.75rem;
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      min-height: 48px;
+    }
+
+    /* SETTINGS VIEW */
+    .settings-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1.5rem;
+      border: 2px solid var(--border);
+    }
+
+    .settings-table th, .settings-table td {
+      padding: 1.2rem;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.9rem;
+    }
+
+    .settings-table th {
+      background: var(--surface-alt);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      width: 35%;
+      border-right: 2px solid var(--border);
+    }
+
+    .settings-table td {
+      background: var(--surface);
+      font-family: var(--font-mono);
+    }
+
+    /* SKILLS & MCP STYLES */
+    .skill-card {
+      background: var(--surface);
+      border: 2px solid var(--border);
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 1rem;
+      position: relative;
+      transition: all 0.2s ease;
+    }
+
+    .skill-card:hover {
+      border-color: var(--accent);
+      background: var(--surface-alt);
+    }
+
+    .skill-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 0.5rem;
+    }
+
+    .skill-name {
+      font-size: 1.1rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: -0.03em;
+      line-height: 1.2;
+    }
+
+    .skill-desc {
+      font-size: 0.85rem;
+      color: var(--muted-foreground);
+      line-height: 1.45;
+      flex: 1;
+    }
+
+    .skill-scope-pill {
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 0.2rem 0.5rem;
+      border: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    .skill-scope-pill.local {
+      background: var(--accent);
+      color: #000000;
+      border-color: #000000;
+    }
+
+    .skill-scope-pill.global {
+      background: var(--surface-alt);
+      color: var(--foreground);
+    }
+
+    .mcp-server-card {
+      background: var(--surface);
+      border: 2px solid var(--border);
+      padding: 1.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      transition: border-color 0.2s ease;
+    }
+
+    .mcp-server-card:hover {
+      border-color: var(--foreground);
+    }
+
+    .mcp-server-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.75rem;
+    }
+
+    .mcp-tool-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.35rem 0.75rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      color: var(--foreground);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .mcp-tool-pill:hover {
+      background: var(--accent);
+      color: #000000;
+      border-color: #000000;
+    }
+
+    /* Modal System */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      z-index: 10000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal-box {
+      background: var(--surface);
+      border: 3px solid var(--border);
+      max-width: 820px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+      padding: 2.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+      position: relative;
+    }
+
+    .modal-title {
+      font-size: 1.4rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: -0.04em;
+    }
+
+    .modal-close-btn {
+      position: absolute;
+      top: 1.5rem;
+      right: 1.5rem;
+      background: transparent;
+      border: 2px solid var(--border);
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .modal-close-btn:hover {
+      background: #ef4444;
+      color: white;
+      border-color: #ef4444;
+    }
+
+    /* AGENT STEPS TIMELINE STYLES */
+    .step-card {
+      background: var(--surface);
+      border: 2px solid var(--border);
+      padding: 1.25rem 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      transition: border-color 0.15s ease, background 0.15s ease;
+    }
+
+    .step-card:hover {
+      border-color: var(--accent);
+      background: var(--surface-alt);
+    }
+
+    .step-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .step-num-pill {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: 700;
+      padding: 0.2rem 0.6rem;
+      background: var(--accent);
+      color: #000000;
+      border: 1px solid #000000;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .step-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: -0.02em;
+    }
+
+    .step-desc {
+      font-size: 0.85rem;
+      color: var(--muted-foreground);
+      line-height: 1.45;
+    }
+
+    .step-details-toggle {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--foreground);
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      padding: 0.5rem 0.75rem;
+      cursor: pointer;
+      margin-top: 0.35rem;
+    }
+
+    .step-details-toggle summary {
+      cursor: pointer;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .step-details-pre {
+      background: var(--background);
+      border: 1px solid var(--border);
+      padding: 0.75rem;
+      margin-top: 0.5rem;
+      font-size: 0.75rem;
+      max-height: 220px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    /* Footer */
+    footer {
+      border-top: 2px solid var(--border);
+      background: var(--surface);
+      padding: 1.75rem 2rem;
+      margin-top: auto;
+    }
+
+    .footer-content {
+      max-width: 95vw;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted-foreground);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Subtle Texture Noise -->
+  <div class="kinetic-noise" aria-hidden="true"></div>
+
+  <!-- Header -->
+  <header>
+    <div class="brand-group">
+      <div class="brand-title">DOCUMORPH<span class="brand-dot"></span>SYS</div>
+      <div class="brand-subtitle">// BRUTALIST DIGITIZER</div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs" aria-label="Dashboard views">
+      <button class="nav-btn active" data-view="viewWorkspace">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        01 // WORKSPACE
+      </button>
+      <button class="nav-btn" data-view="viewStudio" id="navStudioBtn">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        02 // STUDIO
+      </button>
+      <button class="nav-btn" data-view="viewHistory" id="navHistoryBtn">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        03 // LIBRARY
+      </button>
+      <button class="nav-btn" data-view="viewTools">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+        04 // SANDBOX
+      </button>
+      <button class="nav-btn" data-view="viewSkillsMcp" id="navSkillsMcpBtn">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        05 // SKILLS &amp; MCP
+      </button>
+      <button class="nav-btn" data-view="viewSettings">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        06 // CONFIG
+      </button>
+    </nav>
+
+    <!-- Theme & System Status -->
+    <div class="header-controls">
+      <div class="system-status-indicator" id="headerQueueBadge">
+        <span class="status-dot-active"></span>
+        <span id="queueBadgeText">WORKERS: 0 / 3 &bull; QUEUED: 0</span>
+      </div>
+      <button class="btn-theme-toggle" id="themeToggleBtn" title="Switch Theme">
+        <span id="themeToggleIcon">&#9728;</span>
+        <span id="themeToggleLabel">LIGHT</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Relentless Infinite Marquee (High Energy) -->
+  <div class="marquee-container accent" aria-label="Status ticker">
+    <div class="marquee-track" style="--marquee-speed: 22s;">
+      <div class="marquee-content">
+        <span>PDF TO WORD CONVERSION</span>
+        <span>///</span>
+        <span>LATEX TO NATIVE OMML (ALT+=)</span>
+        <span>///</span>
+        <span>SVG TO EDITABLE SHAPES</span>
+        <span>///</span>
+        <span>AUTONOMOUS AGENT ACTIVE</span>
+        <span>///</span>
+        <span>ZERO RADIUS BRUTALISM</span>
+        <span>///</span>
+        <span>RTL / BIDI TYPOGRAPHY</span>
+        <span>///</span>
+      </div>
+      <div class="marquee-content" aria-hidden="true">
+        <span>PDF TO WORD CONVERSION</span>
+        <span>///</span>
+        <span>LATEX TO NATIVE OMML (ALT+=)</span>
+        <span>///</span>
+        <span>SVG TO EDITABLE SHAPES</span>
+        <span>///</span>
+        <span>AUTONOMOUS AGENT ACTIVE</span>
+        <span>///</span>
+        <span>ZERO RADIUS BRUTALISM</span>
+        <span>///</span>
+        <span>RTL / BIDI TYPOGRAPHY</span>
+        <span>///</span>
+      </div>
+    </div>
+  </div>
+
+  <main>
+    <!-- ========================================== -->
+    <!-- VIEW 1: WORKSPACE / INGESTION             -->
+    <!-- ========================================== -->
+    <section class="dashboard-view active" id="viewWorkspace">
+      <!-- Viewport Hero Display -->
+      <div class="hero-section">
+        <div class="hero-meta">[01] // INPUT &bull; OCR &bull; DIGITIZE</div>
+        <h1 class="hero-headline">
+          DOCUMENT <br>
+          <span class="highlight">VELOCITY.</span>
+        </h1>
+        <p class="hero-desc">
+          Upload Iranian or English exam sheets and images. Autonomous AI agent extracts math to native Word OMML (Alt+=) and geometry to editable vector shapes.
+        </p>
+      </div>
+
+      <!-- Upload & Options Card -->
+      <div class="card">
+        <div class="card-watermark" aria-hidden="true">01</div>
+        <div class="card-header">
+          <h2 class="card-title">SOURCE TRANSMISSION</h2>
+          <p class="card-desc">Select input PDF or image. Runs in background with automatic reconnection upon refresh.</p>
+        </div>
+
+        <!-- Drag & Drop Zone -->
+        <div class="upload-zone" id="uploadZone">
+          <input type="file" id="fileInput" class="file-input" accept=".pdf,.png,.jpg,.jpeg,.webp,.bmp" multiple>
+          <div class="upload-icon">
+            <svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          </div>
+          <div class="upload-text-main">CLICK TO UPLOAD OR DRAG &amp; DROP</div>
+          <div class="upload-text-sub">MULTIPLE FILES SUPPORTED &bull; PARALLEL WORKER QUEUE &bull; PDF, PNG, JPG, WEBP</div>
+        </div>
+
+        <!-- Selected Files Info & Queue Preview -->
+        <div class="file-info" id="fileInfo" style="flex-direction: column; align-items: stretch; gap: 1rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem;">
+            <span style="font-weight: 700; font-size: 0.85rem; letter-spacing: 0.1em; text-transform: uppercase;">SELECTED TRANSMISSION QUEUE (<span id="filesCountBadge">0</span>)</span>
+            <button class="btn-remove" id="btnRemoveAll">CLEAR ALL</button>
+          </div>
+          <div id="filesListContainer" style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 220px; overflow-y: auto;">
+          </div>
+        </div>
+
+        <!-- Options -->
+        <div class="options-row">
+          <div class="option-group">
+            <label class="option-label" for="modeSelect">PROCESSING ENGINE</label>
+            <select class="form-select" id="modeSelect">
+              <option value="agent" selected>AUTONOMOUS AI AGENT (TOOL CALLING &amp; VALIDATION)</option>
+              <option value="fast">FAST PIPELINE (DIRECT PAGE DIGITIZATION)</option>
+            </select>
+          </div>
+          <div class="option-group">
+            <label class="option-label" for="modelSelect">AI ENGINE MODEL (.ENV DEFAULT)</label>
+            <select class="form-select" id="modelSelect">
+              <option value="{{ default_model }}" selected>{{ default_model }}</option>
+              <option value="ag/gemini-3.8-flash-high">ag/gemini-3.8-flash-high</option>
+              <option value="ag/gemini-3.8-flash-medium">ag/gemini-3.8-flash-medium</option>
+              <option value="ag/claude-opus-4-6-thinking">ag/claude-opus-4-6-thinking</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Progress Box with Live Stopwatch & Price Tracker -->
+        <div class="progress-box" id="progressBox">
+          <div class="progress-header">
+            <span id="progressTitle">PARALLEL QUEUE DISPATCHER ACTIVE</span>
+            <div style="display: flex; gap: 1.25rem; align-items: center;">
+              <span id="progressTimer" style="font-family: var(--font-mono); color: var(--accent); font-weight: 700; font-size: 1.05rem;">00:00.0</span>
+              <span id="progressCostBadge" style="font-family: var(--font-mono); color: var(--foreground); font-weight: 700; font-size: 1rem; border: 1px solid var(--border); padding: 0.2rem 0.5rem; background: var(--surface);">$0.0000</span>
+              <span id="progressPercent">0%</span>
+            </div>
+          </div>
+          <div class="progress-bar-container">
+            <div class="progress-bar" id="progressBar"></div>
+          </div>
+          <div class="progress-status" id="progressStatus">INITIALIZING TRANSMISSION...</div>
+          <div id="queueJobsMiniList" style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.4rem;"></div>
+        </div>
+
+        <!-- Action Button -->
+        <div class="action-row">
+          <button class="btn-primary" id="btnConvert" disabled>
+            <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            EXECUTE CONVERSION
+          </button>
+        </div>
+
+        <!-- Recent Jobs Quick Strip -->
+        <div class="recent-jobs-strip" id="recentJobsStrip">
+          <div class="recent-jobs-header">
+            <span>// RECENT CONVERSIONS</span>
+            <a href="#" id="linkViewAllHistory" style="color: var(--foreground); text-decoration: underline; font-weight: 700;">VIEW ALL ARCHIVES &rarr;</a>
+          </div>
+          <div class="recent-jobs-list" id="recentJobsList">
+            <div style="font-size: 0.85rem; color: var(--muted-foreground); text-transform: uppercase;">LOADING RECENT RECORDS...</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- VIEW 2: STUDIO / DOCUMENT EDITOR          -->
+    <!-- ========================================== -->
+    <section class="dashboard-view" id="viewStudio">
+      <div class="hero-section">
+        <div class="hero-meta">[02] // STUDIO WORKBENCH &bull; LIVE INSPECTOR</div>
+        <h1 class="hero-headline">
+          DOCUMENT <br>
+          <span class="highlight">STUDIO.</span>
+        </h1>
+        <p class="hero-desc">
+          Inspect converted equations, edit vector graphics, review Persian RTL layout, or instruct the autonomous agent to refine details.
+        </p>
+      </div>
+
+      <div class="studio-container">
+        <!-- Success & Download Banner -->
+        <div class="success-banner">
+          <div class="success-info">
+            <div class="success-icon">&#10003;</div>
+            <div>
+              <div class="success-title" id="studioDocTitle">DOCUMENT READY</div>
+              <div class="success-subtitle" id="resultStats">PROCESSED PAGES WITH NATIVE OMML FORMULAS &amp; VECTOR SHAPES.</div>
+            </div>
+          </div>
+          <div class="download-group">
+            <a href="#" class="btn-download primary" id="btnDownloadDocx" download>
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              DOWNLOAD WORD (.DOCX)
+            </a>
+            <a href="#" class="btn-download" id="btnDownloadZip" download>
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+              ALL ASSETS (.ZIP)
+            </a>
+            <a href="#" class="btn-download" id="btnDownloadMd" download>
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+              MARKDOWN (.MD)
+            </a>
+          </div>
+        </div>
+
+        <!-- Agent Interactive Edit Bar -->
+        <div class="agent-panel">
+          <div class="agent-title">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg>
+            <span>// AGENT REFINEMENT PROTOCOL</span>
+            <span id="agentSkillsBadge" style="margin-left: auto; font-size: 0.75rem; color: var(--muted-foreground); font-family: var(--font-mono); text-transform: uppercase;">SKILLS &bull; MCP ACTIVE</span>
+          </div>
+          <div class="agent-controls">
+            <input type="text" id="agentPromptInput" class="agent-input" placeholder="e.g. 'Use svg skill to fix diagram', 'Verify math formulas with mcp', 'Fix question 6'...">
+            <button class="btn-primary" id="btnAgentEdit">APPLY WITH AGENT</button>
+            <button class="btn-secondary" id="btnRecompileDocx">REBUILD WORD (.DOCX)</button>
+          </div>
+          <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+            <span style="font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; color: var(--muted-foreground); text-transform: uppercase;">FAST SKILLS INJECT:</span>
+            <div id="agentSkillsPills" style="display: flex; gap: 0.4rem; flex-wrap: wrap;"></div>
+          </div>
+        </div>
+
+        <!-- Studio Tabs -->
+        <div class="card" style="padding: 1.5rem;">
+          <div class="studio-tabs-header">
+            <button class="studio-tab-btn active" data-tab="tabPreview">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              DOCUMENT PREVIEW
+            </button>
+            <button class="studio-tab-btn" data-tab="tabSvgs">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+              EXTRACTED SVGS (<span id="svgCountBadge">0</span>)
+            </button>
+            <button class="studio-tab-btn" data-tab="tabMarkdown">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+              MARKDOWN EDITOR
+            </button>
+            <button class="studio-tab-btn" data-tab="tabChat">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              AGENT CHAT (<span id="chatCountBadge">0</span>)
+            </button>
+            <button class="studio-tab-btn" data-tab="tabSteps" id="tabStepsBtn">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+              STEPS (<span id="stepsCountBadge">0</span>)
+            </button>
+          </div>
+
+          <!-- Studio Tab 1: Preview -->
+          <div class="studio-tab-pane active" id="tabPreview" style="margin-top: 1.5rem;">
+            <div class="document-preview-wrapper">
+              <div class="document-preview" id="docPreview">
+                <div style="text-align: center; color: var(--muted-foreground); text-transform: uppercase;">NO ACTIVE DOCUMENT LOADED. CONVERT A FILE OR SELECT ONE FROM LIBRARY.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Studio Tab 2: SVGs -->
+          <div class="studio-tab-pane" id="tabSvgs" style="margin-top: 1.5rem;">
+            <div class="svg-tip">
+              WORD SHAPE CONVERSION: RIGHT-CLICK ANY INSERTED VECTOR GRAPHIC IN WORD &rarr; CHOOSE "CONVERT TO SHAPE" TO EDIT PATHS INDIVIDUALLY.
+            </div>
+            <div class="svg-gallery" id="svgGallery"></div>
+          </div>
+
+          <!-- Studio Tab 3: Markdown -->
+          <div class="studio-tab-pane" id="tabMarkdown" style="margin-top: 1.5rem;">
+            <div class="markdown-view">
+              <button class="btn-copy" id="btnCopyMd">COPY MARKDOWN</button>
+              <textarea class="markdown-textarea" id="markdownText" placeholder="# Document Markdown will appear here..."></textarea>
+            </div>
+          </div>
+
+          <!-- Studio Tab 4: Agent Chat History (SQLite) -->
+          <div class="studio-tab-pane" id="tabChat" style="margin-top: 1.5rem;">
+            <div style="border: 2px solid var(--border); background: var(--surface-alt); padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; min-height: 380px;">
+              <div style="font-weight: 700; font-size: 0.85rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted-foreground); border-bottom: 1px solid var(--border); padding-bottom: 0.5rem;">
+                // PERSISTENT SQLITE CHAT LOG FOR ACTIVE DOCUMENT
+              </div>
+              <div id="chatHistoryContainer" style="display: flex; flex-direction: column; gap: 0.75rem; max-height: 480px; overflow-y: auto;">
+                <div style="color: var(--muted-foreground); font-size: 0.85rem; text-transform: uppercase;">NO AGENT EDITS RECORDED YET.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Studio Tab 5: Agent Execution Steps -->
+          <div class="studio-tab-pane" id="tabSteps" style="margin-top: 1.5rem;">
+            <div style="border: 2px solid var(--border); background: var(--surface-alt); padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; min-height: 380px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--border); padding-bottom: 0.75rem;">
+                <div style="font-weight: 700; font-size: 0.85rem; letter-spacing: 0.1em; text-transform: uppercase;">
+                  // AUTONOMOUS AGENT REASONING &amp; TOOL CALL CHRONOLOGY
+                </div>
+                <span class="badge-tag accent" id="stepsLiveBadge">STEPS LOG</span>
+              </div>
+              <div id="stepsListContainer" style="display: flex; flex-direction: column; gap: 0.75rem; max-height: 480px; overflow-y: auto;">
+                <div style="color: var(--muted-foreground); font-size: 0.85rem; text-transform: uppercase;">NO EXECUTION STEPS RECORDED. RUN A CONVERSION OR LOAD A DOCUMENT.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- VIEW 3: LIBRARY / HISTORY                  -->
+    <!-- ========================================== -->
+    <section class="dashboard-view" id="viewHistory">
+      <div class="hero-section">
+        <div class="hero-meta">[03] // ARCHIVAL STORAGE &bull; JOB RECORDS</div>
+        <h1 class="hero-headline">
+          DOCUMENT <br>
+          <span class="highlight">LIBRARY.</span>
+        </h1>
+        <p class="hero-desc">
+          Browse, search, load, and manage all previously compiled Word documents, markdown files, and vector bundles.
+        </p>
+      </div>
+
+      <div class="history-stats-bar">
+        <div class="stat-card">
+          <div class="stat-val" id="statTotalDocs">0</div>
+          <div class="stat-label">TOTAL DOCUMENTS COMPILED</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-val" id="statTotalSize">0 MB</div>
+          <div class="stat-label">STORAGE CONSUMED</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-val" id="statTotalTime" style="color: var(--accent);">0.0s</div>
+          <div class="stat-label">TOTAL COMPUTE TIME</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-val" id="statTotalCost" style="color: var(--foreground);">$0.0000</div>
+          <div class="stat-label">TOTAL ESTIMATED SPEND</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="history-toolbar">
+          <input type="text" class="search-input" id="historySearch" placeholder="SEARCH DOCUMENTS BY NAME...">
+          <button class="btn-secondary" id="btnRefreshHistory">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            REFRESH ARCHIVE
+          </button>
+        </div>
+
+        <div class="history-table-container">
+          <table class="history-table">
+            <thead>
+              <tr>
+                <th>DOCUMENT NAME</th>
+                <th>TIMESTAMP</th>
+                <th>DURATION</th>
+                <th>EST. PRICE</th>
+                <th>SIZE</th>
+                <th>SVGS</th>
+                <th>FORMATS</th>
+                <th>ACTIONS</th>
+              </tr>
+            </thead>
+            <tbody id="historyTableBody">
+              <tr>
+                <td colspan="8" style="text-align: center; color: var(--muted-foreground); text-transform: uppercase;">LOADING ARCHIVAL RECORDS...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- VIEW 4: SANDBOX & DIAGNOSTICS             -->
+    <!-- ========================================== -->
+    <section class="dashboard-view" id="viewTools">
+      <div class="hero-section">
+        <div class="hero-meta">[04] // DIAGNOSTICS &bull; MATH &amp; VECTOR VALIDATORS</div>
+        <h1 class="hero-headline">
+          SANDBOX <br>
+          <span class="highlight">TOOLS.</span>
+        </h1>
+        <p class="hero-desc">
+          Test mathematical equations with live KaTeX rendering and verify vector SVG markup for Microsoft Word shape compatibility.
+        </p>
+      </div>
+
+      <div class="tools-grid">
+        <!-- Tool 1: LaTeX Equation Tester -->
+        <div class="tool-box">
+          <div class="tool-box-title">
+            <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M10 7v10"/><path d="M14 7v10"/><path d="M4 17h16"/></svg>
+            LATEX &rarr; OMML (ALT+=) TESTER
+          </div>
+          <p class="card-desc">Type any LaTeX equation to preview KaTeX rendering and test Microsoft Office OMML synthesis.</p>
+          <input type="text" class="form-input" id="toolLatexInput" value="x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}">
+          
+          <div class="tool-preview-box" id="toolLatexPreview"></div>
+          
+          <button class="btn-primary" id="btnTestLatex">TEST OMML SYNTHESIS</button>
+          <div class="tool-status-text" id="toolLatexStatus">STATUS: READY FOR VALIDATION</div>
+        </div>
+
+        <!-- Tool 2: SVG Validator -->
+        <div class="tool-box">
+          <div class="tool-box-title">
+            <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+            SVG VECTOR INTEGRITY TESTER
+          </div>
+          <p class="card-desc">Paste raw SVG XML code to test viewBox, path closure, and Office shape conversion compatibility.</p>
+          <textarea class="form-input" id="toolSvgInput" style="height: 110px; resize: vertical; font-family: var(--font-mono); padding: 0.75rem;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100"><circle cx="50" cy="50" r="40" fill="#dfe104" stroke="#000" stroke-width="3"/></svg></textarea>
+          
+          <div class="tool-preview-box" id="toolSvgPreview"></div>
+
+          <button class="btn-primary" id="btnTestSvg">VALIDATE SVG XML</button>
+          <div class="tool-status-text" id="toolSvgStatus">STATUS: READY FOR VALIDATION</div>
+        </div>
+
+        <!-- Tool 3: MCP Tool Runner -->
+        <div class="tool-box" style="grid-column: 1 / -1;">
+          <div class="tool-box-title">
+            <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            MODEL CONTEXT PROTOCOL (MCP) INTERACTIVE RUNNER
+          </div>
+          <p class="card-desc">Execute any tool from connected MCP servers live and verify JSON-RPC 2.0 response payload.</p>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem;">
+            <div class="option-group">
+              <label class="option-label" for="sandboxMcpServerSelect">SELECT MCP SERVER</label>
+              <select class="form-select" id="sandboxMcpServerSelect"></select>
+            </div>
+            <div class="option-group">
+              <label class="option-label" for="sandboxMcpToolSelect">SELECT MCP TOOL</label>
+              <select class="form-select" id="sandboxMcpToolSelect"></select>
+            </div>
+          </div>
+          <div class="option-group">
+            <label class="option-label" for="sandboxMcpArgsInput">ARGUMENTS (JSON)</label>
+            <textarea class="form-input" id="sandboxMcpArgsInput" style="height: 90px; resize: vertical; font-family: var(--font-mono); padding: 0.75rem;">{}</textarea>
+          </div>
+          <button class="btn-primary" id="btnTestMcpTool">RUN MCP TOOL EXECUTION</button>
+          <div class="tool-status-text" id="toolMcpStatus" style="white-space: pre-wrap; max-height: 200px; overflow-y: auto;">STATUS: SELECT SERVER AND TOOL TO RUN</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- VIEW 5: SKILLS & MCP EXTENSIONS            -->
+    <!-- ========================================== -->
+    <section class="dashboard-view" id="viewSkillsMcp">
+      <div class="hero-section">
+        <div class="hero-meta">[05] // AGENT EXTENSIONS &bull; DOMAIN SKILLS &bull; MODEL CONTEXT PROTOCOL</div>
+        <h1 class="hero-headline">
+          SKILLS &amp; <br>
+          <span class="highlight">MCP TOOLS.</span>
+        </h1>
+        <p class="hero-desc">
+          Extend autonomous agent intelligence with modular domain instructions (LaTeX math, SVG geometry, Persian typography) and external Model Context Protocol tool servers.
+        </p>
+      </div>
+
+      <!-- Section 1: AI Skills Inventory -->
+      <div class="card" style="margin-bottom: 2.5rem;">
+        <div class="card-watermark" aria-hidden="true">SKL</div>
+        <div class="card-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
+          <div>
+            <h2 class="card-title">AI SKILLS INVENTORY (<span id="skillsTotalCount">0</span>)</h2>
+            <p class="card-desc">Domain skills discovered from local directory and global ~/.agents/skills. The agent loads these via `use_skill` for specialized guidance.</p>
+          </div>
+          <button class="btn-secondary" id="btnOpenNewSkillModal" style="display: inline-flex; align-items: center; gap: 0.5rem;">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            ADD LOCAL SKILL
+          </button>
+        </div>
+
+        <div id="skillsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.5rem;">
+          <div style="color: var(--muted-foreground); text-transform: uppercase;">LOADING DISCOVERED SKILLS...</div>
+        </div>
+      </div>
+
+      <!-- Section 2: MCP Server Integrations -->
+      <div class="card">
+        <div class="card-watermark" aria-hidden="true">MCP</div>
+        <div class="card-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
+          <div>
+            <h2 class="card-title">MODEL CONTEXT PROTOCOL (MCP) SERVERS (<span id="mcpServersTotalCount">0</span>)</h2>
+            <p class="card-desc">Connect external MCP servers via JSON-RPC 2.0 (stdio subprocess or HTTP). Discovered tools automatically become available to the AI agent.</p>
+          </div>
+          <button class="btn-primary" id="btnOpenNewMcpModal" style="display: inline-flex; align-items: center; gap: 0.5rem;">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            CONNECT MCP SERVER
+          </button>
+        </div>
+
+        <div id="mcpServersList" style="display: flex; flex-direction: column; gap: 1.5rem;">
+          <div style="color: var(--muted-foreground); text-transform: uppercase;">LOADING MCP SERVERS...</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- VIEW 6: CONFIGURATION & SETTINGS           -->
+    <!-- ========================================== -->
+    <section class="dashboard-view" id="viewSettings">
+      <div class="hero-section">
+        <div class="hero-meta">[06] // ENVIRONMENT &bull; SECRETS &amp; AGENT CONFIG</div>
+        <h1 class="hero-headline">
+          SYSTEM <br>
+          <span class="highlight">CONFIG.</span>
+        </h1>
+        <p class="hero-desc">
+          Inspect active environment parameters loaded from .env, local runtime status, and dev auto-reload capabilities.
+        </p>
+      </div>
+
+      <div class="card">
+        <div class="card-watermark" aria-hidden="true">06</div>
+        <div class="card-header">
+          <h2 class="card-title">RUNTIME PARAMETERS (SQLITE &bull; .ENV)</h2>
+          <p class="card-desc">Edit parameters directly. Changes persist in SQLite database across reloads and runs.</p>
+        </div>
+
+        <form id="settingsForm" style="display: flex; flex-direction: column; gap: 1.5rem;">
+          <div class="option-group">
+            <label class="option-label" for="settingBaseUrl">OPENAI_API_BASE_URL</label>
+            <input type="text" class="form-input" id="settingBaseUrl" placeholder="http://localhost:20128/v1">
+          </div>
+
+          <div class="option-group">
+            <label class="option-label" for="settingApiKey">OPENAI_API_KEY</label>
+            <div style="display: flex; gap: 0.5rem;">
+              <input type="password" class="form-input" id="settingApiKey" placeholder="API Key" style="flex: 1;">
+              <button type="button" class="btn-secondary" id="btnToggleApiKey">SHOW</button>
+            </div>
+          </div>
+
+          <div class="options-row" style="margin-top: 0;">
+            <div class="option-group">
+              <label class="option-label" for="settingModel">AI_DEFAULT_MODEL</label>
+              <input type="text" class="form-input" id="settingModel" placeholder="ag/gemini-3.8-flash-high">
+            </div>
+            <div class="option-group">
+              <label class="option-label" for="settingMaxWorkers">MAX_CONCURRENT_JOBS (PARALLEL QUEUE)</label>
+              <input type="number" class="form-input" id="settingMaxWorkers" min="1" max="10" value="3">
+            </div>
+          </div>
+
+          <div class="option-group">
+            <label class="option-label" for="settingOutputDir">OUTPUT_PATH</label>
+            <input type="text" class="form-input" id="settingOutputDir" placeholder="./output">
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; border-top: 2px solid var(--border); padding-top: 1.5rem;">
+            <div id="settingsSaveStatus" style="font-size: 0.85rem; font-weight: 700; text-transform: uppercase; color: var(--muted-foreground);">STATUS: LOADED FROM SQLITE</div>
+            <button type="submit" class="btn-primary" id="btnSaveSettings">SAVE SETTINGS TO SQLITE</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Maintenance & Cache Purge Card -->
+      <div class="card" style="border-color: #ef4444;">
+        <div class="card-watermark" aria-hidden="true" style="color: #ef4444; opacity: 0.15;">DEL</div>
+        <div class="card-header">
+          <h2 class="card-title" style="color: #ef4444;">MAINTENANCE // PURGE CACHE &amp; CLEAN DB</h2>
+          <p class="card-desc">Removes all uploaded input files, generated Word DOCX/MD/SVG output artifacts, and wipes jobs/chat history in SQLite (preserves your configured API settings).</p>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+          <div id="clearCacheStatus" style="font-size: 0.85rem; font-weight: 700; text-transform: uppercase; color: var(--muted-foreground);">
+            CACHE STATUS: READY
+          </div>
+          <button type="button" class="btn-primary" id="btnClearCache" style="background: #ef4444; color: #ffffff; border-color: #ef4444;">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+            PURGE CACHE &amp; CLEAN DB
+          </button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- MODAL: SKILL INSPECTOR & CREATOR -->
+  <div class="modal-overlay" id="skillModal">
+    <div class="modal-box">
+      <button class="modal-close-btn" id="btnCloseSkillModal">&times;</button>
+      <div class="modal-title" id="skillModalTitle">SKILL DETAILS</div>
+      <div id="skillViewMode">
+        <div style="display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1rem;">
+          <span class="badge-tag accent" id="modalSkillScope">LOCAL</span>
+          <span style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted-foreground);" id="modalSkillPath"></span>
+        </div>
+        <p style="font-size: 0.95rem; color: var(--foreground); margin-bottom: 1.25rem;" id="modalSkillDesc"></p>
+        <div style="font-weight: 700; font-size: 0.8rem; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.5rem; color: var(--muted-foreground);">
+          // SKILL INSTRUCTIONS (MARKDOWN)
+        </div>
+        <pre id="modalSkillContent" style="background: var(--surface-alt); border: 2px solid var(--border); padding: 1.25rem; font-family: var(--font-mono); font-size: 0.85rem; max-height: 400px; overflow-y: auto; white-space: pre-wrap; line-height: 1.5;"></pre>
+      </div>
+
+      <form id="skillCreateForm" style="display: none; flex-direction: column; gap: 1.25rem;">
+        <div class="option-group">
+          <label class="option-label" for="newSkillName">SKILL IDENTIFIER (SLUG)</label>
+          <input type="text" class="form-input" id="newSkillName" placeholder="e.g. geometry-proof-formatter" required>
+        </div>
+        <div class="option-group">
+          <label class="option-label" for="newSkillDesc">SHORT DESCRIPTION</label>
+          <input type="text" class="form-input" id="newSkillDesc" placeholder="e.g. Rules for formal geometry step-by-step proofs" required>
+        </div>
+        <div class="option-group">
+          <label class="option-label" for="newSkillInstructions">SKILL INSTRUCTIONS (MARKDOWN)</label>
+          <textarea class="form-input" id="newSkillInstructions" style="height: 200px; resize: vertical; font-family: var(--font-mono); padding: 0.75rem;" placeholder="# Skill Instructions&#10;&#10;1. When formatting geometry proofs...&#10;2. Use LaTeX for angles \angle ABC..." required></textarea>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 0.5rem;">
+          <button type="submit" class="btn-primary" id="btnSaveSkill">SAVE SKILL TO LOCAL STORAGE</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: MCP SERVER CONFIGURATION -->
+  <div class="modal-overlay" id="mcpServerModal">
+    <div class="modal-box">
+      <button class="modal-close-btn" id="btnCloseMcpModal">&times;</button>
+      <div class="modal-title" id="mcpModalTitle">CONNECT MCP SERVER</div>
+      <p class="card-desc">Register a Model Context Protocol server. The server must speak JSON-RPC 2.0 via standard input/output (stdio) or HTTP endpoint.</p>
+      
+      <form id="mcpServerForm" style="display: flex; flex-direction: column; gap: 1.25rem;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+          <div class="option-group">
+            <label class="option-label" for="mcpServerId">SERVER ID (KEY)</label>
+            <input type="text" class="form-input" id="mcpServerId" placeholder="e.g. fs_tools" required>
+          </div>
+          <div class="option-group">
+            <label class="option-label" for="mcpServerName">DISPLAY NAME</label>
+            <input type="text" class="form-input" id="mcpServerName" placeholder="e.g. Filesystem Tools" required>
+          </div>
+        </div>
+
+        <div class="option-group">
+          <label class="option-label" for="mcpServerType">TRANSPORT PROTOCOL</label>
+          <select class="form-select" id="mcpServerType">
+            <option value="stdio" selected>STDIO (COMMAND SUBPROCESS: JSON-RPC 2.0)</option>
+            <option value="http">HTTP / SSE ENDPOINT (JSON-RPC 2.0)</option>
+          </select>
+        </div>
+
+        <div id="mcpStdioFields" style="display: flex; flex-direction: column; gap: 1.25rem;">
+          <div class="option-group">
+            <label class="option-label" for="mcpServerCommand">COMMAND EXECUTABLE</label>
+            <input type="text" class="form-input" id="mcpServerCommand" placeholder="e.g. npx or python or node">
+          </div>
+          <div class="option-group">
+            <label class="option-label" for="mcpServerArgs">ARGUMENTS (JSON ARRAY)</label>
+            <input type="text" class="form-input" id="mcpServerArgs" style="font-family: var(--font-mono);" placeholder='["-y", "@modelcontextprotocol/server-everything"]'>
+          </div>
+          <div class="option-group">
+            <label class="option-label" for="mcpServerEnv">ENVIRONMENT VARIABLES (JSON OBJECT)</label>
+            <input type="text" class="form-input" id="mcpServerEnv" style="font-family: var(--font-mono);" placeholder='{"DEBUG": "true"}'>
+          </div>
+        </div>
+
+        <div id="mcpHttpFields" style="display: none; flex-direction: column; gap: 1.25rem;">
+          <div class="option-group">
+            <label class="option-label" for="mcpServerUrl">SERVER URL (HTTP / JSON-RPC)</label>
+            <input type="text" class="form-input" id="mcpServerUrl" placeholder="http://localhost:3000/jsonrpc">
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 2px solid var(--border); padding-top: 1.25rem;">
+          <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; cursor: pointer;">
+            <input type="checkbox" id="mcpServerEnabled" checked style="width: 18px; height: 18px;">
+            ENABLED FOR AI AGENT
+          </label>
+          <button type="submit" class="btn-primary" id="btnSaveMcpServer">SAVE &amp; CONNECT SERVER</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Secondary Kinetic Marquee (Slower Rhythm) -->
+  <div class="marquee-container" aria-hidden="true">
+    <div class="marquee-track reverse" style="--marquee-speed: 32s;">
+      <div class="marquee-content">
+        <span>KINETIC SYSTEM PROTOCOL</span>
+        <span>&bull;</span>
+        <span>AUTOMATIC OMML RECONSTRUCTION</span>
+        <span>&bull;</span>
+        <span>OPENXML HIGH DENSITY</span>
+        <span>&bull;</span>
+        <span>RTL / BIDI TYPOGRAPHY COMPLIANT</span>
+        <span>&bull;</span>
+      </div>
+      <div class="marquee-content" aria-hidden="true">
+        <span>KINETIC SYSTEM PROTOCOL</span>
+        <span>&bull;</span>
+        <span>AUTOMATIC OMML RECONSTRUCTION</span>
+        <span>&bull;</span>
+        <span>OPENXML HIGH DENSITY</span>
+        <span>&bull;</span>
+        <span>RTL / BIDI TYPOGRAPHY COMPLIANT</span>
+        <span>&bull;</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-content">
+      <div>DOCUMORPH // KINETIC TYPOGRAPHY EDITION</div>
+      <div>LATEX &rarr; OMML (ALT+=) &bull; SVG &rarr; OFFICE SHAPES</div>
+    </div>
+  </footer>
+
+  <script>
+    // --- THEME SYSTEM (Light default, Dark toggle) ---
+    const themeToggleBtn = document.getElementById('themeToggleBtn');
+    const themeToggleIcon = document.getElementById('themeToggleIcon');
+    const themeToggleLabel = document.getElementById('themeToggleLabel');
+
+    function applyTheme(theme) {
+      if (theme === 'dark') {
+        document.body.classList.add('theme-dark');
+        themeToggleIcon.innerHTML = '&#9790;';
+        themeToggleLabel.textContent = 'DARK';
+      } else {
+        document.body.classList.remove('theme-dark');
+        themeToggleIcon.innerHTML = '&#9728;';
+        themeToggleLabel.textContent = 'LIGHT';
+      }
+      localStorage.setItem('documorph_theme', theme);
+    }
+
+    const savedTheme = localStorage.getItem('documorph_theme') || 'light';
+    applyTheme(savedTheme);
+
+    themeToggleBtn.addEventListener('click', () => {
+      const isDark = document.body.classList.contains('theme-dark');
+      applyTheme(isDark ? 'light' : 'dark');
+    });
+
+    // --- NAVIGATION TABS SYSTEM ---
+    const navButtons = document.querySelectorAll('.nav-btn');
+    const dashboardViews = document.querySelectorAll('.dashboard-view');
+
+    function switchView(viewId) {
+      navButtons.forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.view === viewId);
+      });
+      dashboardViews.forEach(view => {
+        view.classList.toggle('active', view.id === viewId);
+      });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+
+      if (viewId === 'viewHistory') {
+        loadHistory();
+      } else if (viewId === 'viewSettings') {
+        loadSettings();
+      } else if (viewId === 'viewSkillsMcp') {
+        loadSkills();
+        loadMcpServers();
+      } else if (viewId === 'viewTools') {
+        updateToolLatexPreview();
+        updateToolSvgPreview();
+        loadSandboxMcpOptions();
+      }
+    }
+
+    navButtons.forEach(btn => {
+      btn.addEventListener('click', () => switchView(btn.dataset.view));
+    });
+
+    document.getElementById('linkViewAllHistory')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      switchView('viewHistory');
+    });
+
+    // --- WORKSPACE INGESTION LOGIC (MULTI-FILE QUEUE SUPPORT) ---
+    let selectedFiles = [];
+    let currentBaseName = '';
+
+    const uploadZone = document.getElementById('uploadZone');
+    const fileInput = document.getElementById('fileInput');
+    const fileInfo = document.getElementById('fileInfo');
+    const filesListContainer = document.getElementById('filesListContainer');
+    const filesCountBadge = document.getElementById('filesCountBadge');
+    const btnRemoveAll = document.getElementById('btnRemoveAll');
+    const btnConvert = document.getElementById('btnConvert');
+    const modeSelect = document.getElementById('modeSelect');
+    const progressBox = document.getElementById('progressBox');
+    const progressBar = document.getElementById('progressBar');
+    const progressStatus = document.getElementById('progressStatus');
+    const progressPercent = document.getElementById('progressPercent');
+    const queueJobsMiniList = document.getElementById('queueJobsMiniList');
+
+    uploadZone.addEventListener('click', () => fileInput.click());
+    uploadZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      uploadZone.classList.add('dragover');
+    });
+    uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+    uploadZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uploadZone.classList.remove('dragover');
+      if (e.dataTransfer.files.length) {
+        handleFilesSelected(Array.from(e.dataTransfer.files));
+      }
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length) {
+        handleFilesSelected(Array.from(e.target.files));
+      }
+    });
+
+    function handleFilesSelected(newFiles) {
+      newFiles.forEach(nf => {
+        if (!selectedFiles.some(f => f.name === nf.name && f.size === nf.size)) {
+          selectedFiles.push(nf);
+        }
+      });
+
+      renderSelectedFiles();
+    }
+
+    function renderSelectedFiles() {
+      if (selectedFiles.length === 0) {
+        uploadZone.style.display = 'block';
+        fileInfo.style.display = 'none';
+        btnConvert.disabled = true;
+        return;
+      }
+
+      uploadZone.style.display = 'none';
+      fileInfo.style.display = 'flex';
+      btnConvert.disabled = false;
+      filesCountBadge.textContent = selectedFiles.length;
+
+      filesListContainer.innerHTML = '';
+      selectedFiles.forEach((file, idx) => {
+        const ext = file.name.split('.').pop().toUpperCase();
+        const row = document.createElement('div');
+        row.style.cssText = 'display: flex; justify-content: space-between; align-items: center; background: var(--surface); padding: 0.6rem 0.9rem; border: 1px solid var(--border);';
+        row.innerHTML = `
+          <div style="display: flex; align-items: center; gap: 0.75rem; overflow: hidden;">
+            <span class="file-type-icon" style="width: 32px; height: 32px; font-size: 0.7rem;">${ext}</span>
+            <span style="font-weight: 700; font-size: 0.9rem; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 380px;">${file.name}</span>
+            <span style="font-size: 0.75rem; color: var(--muted-foreground); font-family: var(--font-mono);">${formatBytes(file.size)}</span>
+          </div>
+          <button type="button" class="btn-action-small danger" style="padding: 0.25rem 0.5rem;" onclick="removeSelectedFile(${idx})">&#x2715;</button>
+        `;
+        filesListContainer.appendChild(row);
+      });
+    }
+
+    window.removeSelectedFile = function(idx) {
+      selectedFiles.splice(idx, 1);
+      renderSelectedFiles();
+    };
+
+    btnRemoveAll.addEventListener('click', () => {
+      selectedFiles = [];
+      fileInput.value = '';
+      renderSelectedFiles();
+    });
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 BYTES';
+      const k = 1024;
+      const sizes = ['BYTES', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    // --- STOPWATCH TIMER & COST ESTIMATOR ---
+    let jobStartTime = null;
+    let jobTimerInterval = null;
+
+    function startJobTimer() {
+      jobStartTime = Date.now();
+      clearInterval(jobTimerInterval);
+      const timerEl = document.getElementById('progressTimer');
+      const costEl = document.getElementById('progressCostBadge');
+      if (timerEl) timerEl.textContent = '00:00.0';
+      if (costEl) costEl.textContent = '$0.0000';
+
+      jobTimerInterval = setInterval(() => {
+        const elapsedSec = (Date.now() - jobStartTime) / 1000;
+        const mins = Math.floor(elapsedSec / 60);
+        const secs = (elapsedSec % 60).toFixed(1);
+        const fmt = (mins < 10 ? '0' : '') + mins + ':' + (secs < 10 ? '0' : '') + secs;
+        if (timerEl) timerEl.textContent = fmt;
+
+        // Dynamic cost estimation ticking live (~$0.0001 per sec activity baseline)
+        const estCost = (elapsedSec * 0.00008).toFixed(4);
+        if (costEl) costEl.textContent = '~$0' + estCost.substring(1);
+      }, 100);
+    }
+
+    function stopJobTimer(finalDurationText, finalCostText) {
+      clearInterval(jobTimerInterval);
+      const timerEl = document.getElementById('progressTimer');
+      const costEl = document.getElementById('progressCostBadge');
+      if (timerEl && finalDurationText) timerEl.textContent = finalDurationText;
+      if (costEl && finalCostText) costEl.textContent = finalCostText;
+    }
+
+    // --- SSE & BACKGROUND TASK HANDLING ---
+    let activeTaskId = localStorage.getItem('documorph_active_task');
+    let eventSource = null;
+
+    window.addEventListener('DOMContentLoaded', () => {
+      loadRecentJobsMini();
+      pollQueueStatus();
+      setInterval(pollQueueStatus, 3500);
+
+      if (activeTaskId) {
+        resumeTask(activeTaskId);
+      }
+    });
+
+    async function pollQueueStatus() {
+      try {
+        const res = await fetch('/api/queue');
+        if (!res.ok) return;
+        const data = await res.json();
+        const queuedCount = data.jobs.filter(j => j.status === 'queued').length;
+        document.getElementById('queueBadgeText').innerHTML = `WORKERS: ${data.active_workers} / ${data.max_concurrent} &bull; QUEUED: ${queuedCount}`;
+      } catch (err) {
+        // Silently tolerate temporary network drop
+      }
+    }
+
+    function resumeTask(taskId) {
+      fetch(`/api/task/${taskId}/status`)
+        .then(res => {
+          if (!res.ok) throw new Error('Task not found');
+          return res.json();
+        })
+        .then(task => {
+          if (task.status === 'processing' || task.status === 'queued') {
+            progressBox.style.display = 'block';
+            btnConvert.disabled = true;
+            connectSSE(taskId);
+          } else if (task.status === 'done' && task.result) {
+            localStorage.removeItem('documorph_active_task');
+            showResultsInStudio(task.result);
+          } else {
+            localStorage.removeItem('documorph_active_task');
+          }
+        })
+        .catch(() => {
+          localStorage.removeItem('documorph_active_task');
+        });
+    }
+
+    function connectSSE(taskId) {
+      if (eventSource) {
+        eventSource.close();
+      }
+
+      eventSource = new EventSource(`/api/task/${taskId}/events`);
+
+      eventSource.onmessage = (e) => {
+        try {
+          const payload = JSON.parse(e.data);
+          if (payload.type === 'progress') {
+            const pct = Math.max(5, Math.min(100, payload.percent || 10));
+            progressBar.style.width = pct + '%';
+            progressPercent.textContent = pct + '%';
+            progressStatus.textContent = payload.message || 'PROCESSING IN BACKGROUND...';
+            if (payload.formatted_time) {
+              const timerEl = document.getElementById('progressTimer');
+              if (timerEl) timerEl.textContent = payload.formatted_time;
+            }
+            pollQueueStatus();
+          } else if (payload.type === 'done') {
+            progressBar.style.width = '100%';
+            progressPercent.textContent = '100%';
+            progressStatus.textContent = 'FINISHED!';
+            stopJobTimer(payload.formatted_duration || payload.result?.formatted_duration, payload.formatted_cost || payload.result?.formatted_cost);
+            eventSource.close();
+            localStorage.removeItem('documorph_active_task');
+            setTimeout(() => {
+              progressBox.style.display = 'none';
+              showResultsInStudio(payload.result);
+              loadRecentJobsMini();
+              pollQueueStatus();
+            }, 500);
+          } else if (payload.type === 'error') {
+            stopJobTimer('ERROR', '$0.0000');
+            eventSource.close();
+            localStorage.removeItem('documorph_active_task');
+            alert('ERROR: ' + (payload.message || 'UNKNOWN PROCESSING ERROR'));
+            btnConvert.disabled = false;
+            progressBox.style.display = 'none';
+            pollQueueStatus();
+          }
+        } catch (err) {
+          console.error('SSE JSON ERROR', err);
+        }
+      };
+
+      eventSource.onerror = () => {
+        setTimeout(() => {
+          if (activeTaskId) {
+            fetch(`/api/task/${taskId}/status`)
+              .then(r => r.json())
+              .then(t => {
+                if (t.status === 'done') {
+                  eventSource.close();
+                  localStorage.removeItem('documorph_active_task');
+                  progressBox.style.display = 'none';
+                  showResultsInStudio(t.result);
+                  loadRecentJobsMini();
+                  pollQueueStatus();
+                }
+              }).catch(() => {});
+          }
+        }, 1500);
+      };
+    }
+
+    btnConvert.addEventListener('click', async () => {
+      if (selectedFiles.length === 0) return;
+
+      btnConvert.disabled = true;
+      progressBox.style.display = 'block';
+      progressBar.style.width = '5%';
+      progressPercent.textContent = '5%';
+      progressStatus.textContent = `UPLOADING ${selectedFiles.length} FILE(S) TO PARALLEL QUEUE...`;
+      startJobTimer();
+
+      const formData = new FormData();
+      selectedFiles.forEach(f => {
+        formData.append('files', f);
+      });
+      formData.append('model', document.getElementById('modelSelect').value);
+      formData.append('mode', modeSelect.value);
+
+      try {
+        const response = await fetch('/api/convert', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!response.ok) {
+          throw new Error('Upload request failed with status ' + response.status);
+        }
+
+        const data = await response.json();
+        activeTaskId = data.task_id;
+        localStorage.setItem('documorph_active_task', activeTaskId);
+
+        // Display queued items in progress box
+        queueJobsMiniList.innerHTML = '';
+        if (data.tasks) {
+          data.tasks.forEach(t => {
+            const item = document.createElement('div');
+            item.style.cssText = 'font-size: 0.75rem; font-family: var(--font-mono); color: var(--muted-foreground); text-transform: uppercase;';
+            item.textContent = `&bull; ENQUEUED: ${t.filename} (TASK: ${t.task_id.substring(0,8)}...)`;
+            queueJobsMiniList.appendChild(item);
+          });
+        }
+
+        connectSSE(activeTaskId);
+        pollQueueStatus();
+
+      } catch (err) {
+        alert('ERROR: ' + err.message);
+        btnConvert.disabled = false;
+        progressBox.style.display = 'none';
+      }
+    });
+
+    // --- RECENT JOBS STRIP (WORKSPACE) ---
+    async function loadRecentJobsMini() {
+      const container = document.getElementById('recentJobsList');
+      try {
+        const res = await fetch('/api/history');
+        if (!res.ok) return;
+        const data = await res.json();
+        const docs = data.documents.slice(0, 3);
+        if (docs.length === 0) {
+          container.innerHTML = '<div style="font-size: 0.85rem; color: var(--muted-foreground); text-transform: uppercase;">NO ARCHIVED JOBS YET. UPLOAD A FILE ABOVE TO START.</div>';
+          return;
+        }
+        container.innerHTML = '';
+        docs.forEach(doc => {
+          const item = document.createElement('div');
+          item.className = 'recent-job-item';
+          item.innerHTML = `
+            <div class="recent-job-title">${doc.display_title}</div>
+            <div class="recent-job-meta">
+              <span>${doc.formatted_time}</span>
+              <span>${doc.svg_count} SVGS &bull; ${formatBytes(doc.size)}</span>
+            </div>
+          `;
+          item.addEventListener('click', () => loadDocumentIntoStudio(doc.base_name));
+          container.appendChild(item);
+        });
+      } catch (err) {
+        console.warn('Could not load recent jobs', err);
+      }
+    }
+
+    // --- STUDIO VIEW CONTROLS ---
+    const studioDocTitle = document.getElementById('studioDocTitle');
+    const resultStats = document.getElementById('resultStats');
+    const btnDownloadDocx = document.getElementById('btnDownloadDocx');
+    const btnDownloadZip = document.getElementById('btnDownloadZip');
+    const btnDownloadMd = document.getElementById('btnDownloadMd');
+    const docPreview = document.getElementById('docPreview');
+    const svgGallery = document.getElementById('svgGallery');
+    const svgCountBadge = document.getElementById('svgCountBadge');
+    const markdownText = document.getElementById('markdownText');
+    const btnCopyMd = document.getElementById('btnCopyMd');
+    const agentPromptInput = document.getElementById('agentPromptInput');
+    const btnAgentEdit = document.getElementById('btnAgentEdit');
+    const btnRecompileDocx = document.getElementById('btnRecompileDocx');
+
+    document.querySelectorAll('.studio-tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.studio-tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.studio-tab-pane').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.tab).classList.add('active');
+      });
+    });
+
+    btnCopyMd.addEventListener('click', () => {
+      navigator.clipboard.writeText(markdownText.value);
+      btnCopyMd.textContent = 'COPIED!';
+      setTimeout(() => btnCopyMd.textContent = 'COPY MARKDOWN', 2000);
+    });
+
+    function showResultsInStudio(data) {
+      currentBaseName = data.base_name;
+      btnConvert.disabled = false;
+
+      const title = data.display_title || data.base_name;
+      studioDocTitle.textContent = title;
+      const dur = data.formatted_duration || (data.duration_sec ? data.duration_sec + 's' : 'N/A');
+      const cost = data.formatted_cost || (data.cost_usd ? '$' + data.cost_usd.toFixed(4) : '$0.0000');
+      resultStats.innerHTML = `TIME: <strong style="color: var(--accent);">${dur}</strong> &bull; EST. PRICE: <strong style="color: var(--accent);">${cost}</strong> &bull; PAGES: ${data.total_pages || 1} &bull; SVGS: ${data.svgs ? data.svgs.length : 0}`;
+
+      btnDownloadDocx.href = `/api/download/${encodeURIComponent(data.docx_name)}`;
+      btnDownloadZip.href = `/api/download/${encodeURIComponent(data.zip_name)}`;
+      btnDownloadMd.href = `/api/download/${encodeURIComponent(data.md_name)}`;
+
+      svgCountBadge.textContent = data.svgs ? data.svgs.length : 0;
+      markdownText.value = data.markdown_content || '';
+
+      renderPreview(data.markdown_content || '');
+
+      svgGallery.innerHTML = '';
+      if (data.svg_data && data.svg_data.length) {
+        data.svg_data.forEach((svgItem) => {
+          const card = document.createElement('div');
+          card.className = 'svg-card';
+          card.innerHTML = `
+            <div class="svg-card-header">
+              <span class="svg-title">${svgItem.name}</span>
+              <a href="/api/download/svg/${encodeURIComponent(data.base_name)}/${encodeURIComponent(svgItem.name)}" class="btn-action-small" download>
+                DOWNLOAD SVG
+              </a>
+            </div>
+            <div class="svg-card-body">
+              ${svgItem.content}
+            </div>
+          `;
+          svgGallery.appendChild(card);
+        });
+      } else {
+        svgGallery.innerHTML = '<div style="color: var(--muted-foreground); font-size: 0.9rem; text-transform: uppercase;">NO STANDALONE VECTOR DIAGRAMS FOUND IN DOCUMENT.</div>';
+      }
+
+      // Load persistent chat history from SQLite
+      loadChatHistory(data.base_name);
+
+      // Render agent execution steps
+      renderSteps(data.steps || []);
+
+      // Switch to Studio View
+      switchView('viewStudio');
+    }
+
+    async function loadChatHistory(baseName) {
+      const container = document.getElementById('chatHistoryContainer');
+      const badge = document.getElementById('chatCountBadge');
+      if (!baseName) return;
+
+      try {
+        const res = await fetch(`/api/chat/${encodeURIComponent(baseName)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const messages = data.messages || [];
+        badge.textContent = messages.length;
+
+        if (messages.length === 0) {
+          container.innerHTML = '<div style="color: var(--muted-foreground); font-size: 0.85rem; text-transform: uppercase;">NO AGENT EDITS RECORDED YET.</div>';
+          return;
+        }
+
+        container.innerHTML = '';
+        messages.forEach(msg => {
+          const isUser = msg.role === 'user';
+          const bubble = document.createElement('div');
+          bubble.style.cssText = `
+            padding: 0.85rem 1.1rem;
+            border: 2px solid var(--border);
+            background: ${isUser ? 'var(--surface)' : 'var(--background)'};
+            align-self: ${isUser ? 'flex-end' : 'flex-start'};
+            max-width: 85%;
+          `;
+          bubble.innerHTML = `
+            <div style="display: flex; justify-content: space-between; gap: 1rem; margin-bottom: 0.35rem; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; color: ${isUser ? 'var(--foreground)' : 'var(--accent)'};">
+              <span>${isUser ? 'USER COMMAND' : 'AGENT EXECUTION'}</span>
+              <span style="font-family: var(--font-mono); color: var(--muted-foreground);">${msg.formatted_time || ''}</span>
+            </div>
+            <div style="font-size: 0.9rem; line-height: 1.4; color: var(--foreground); font-weight: 500;">
+              ${msg.content}
+            </div>
+          `;
+          container.appendChild(bubble);
+        });
+        container.scrollTop = container.scrollHeight;
+      } catch (err) {
+        console.warn('Could not load chat history', err);
+      }
+    }
+
+    function renderSteps(steps) {
+      const container = document.getElementById('stepsListContainer');
+      const badge = document.getElementById('stepsCountBadge');
+      if (!container || !badge) return;
+
+      badge.textContent = steps ? steps.length : 0;
+
+      if (!steps || steps.length === 0) {
+        container.innerHTML = '<div style="color: var(--muted-foreground); font-size: 0.85rem; text-transform: uppercase;">NO EXECUTION STEPS RECORDED. RUN A CONVERSION OR LOAD A DOCUMENT.</div>';
+        return;
+      }
+
+      container.innerHTML = '';
+      steps.forEach((st, idx) => {
+        const stepNum = String(st.step || (idx + 1)).padStart(2, '0');
+        const card = document.createElement('div');
+        card.className = 'step-card';
+
+        let badgeTypeClass = 'accent';
+        if (st.type === 'thought') badgeTypeClass = '';
+        else if (st.type === 'skill') badgeTypeClass = 'accent';
+        else if (st.type === 'mcp') badgeTypeClass = 'accent';
+        else if (st.type === 'output') badgeTypeClass = 'accent';
+
+        let detailsHtml = '';
+        if (st.args && Object.keys(st.args).length > 0) {
+          detailsHtml += `
+            <details class="step-details-toggle">
+              <summary>INPUT ARGUMENTS</summary>
+              <pre class="step-details-pre">${escapeHtml(JSON.stringify(st.args, null, 2))}</pre>
+            </details>
+          `;
+        }
+        if (st.result) {
+          detailsHtml += `
+            <details class="step-details-toggle">
+              <summary>TOOL RESULT</summary>
+              <pre class="step-details-pre">${escapeHtml(typeof st.result === 'object' ? JSON.stringify(st.result, null, 2) : String(st.result))}</pre>
+            </details>
+          `;
+        }
+
+        card.innerHTML = `
+          <div class="step-header">
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+              <span class="step-num-pill">${stepNum}</span>
+              <span class="step-title">${escapeHtml(st.title || 'STEP')}</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <span class="badge-tag ${badgeTypeClass}">${escapeHtml((st.type || 'STEP').toUpperCase())}</span>
+              <span style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted-foreground);">${escapeHtml(st.time || '')}</span>
+            </div>
+          </div>
+          <div class="step-desc">${escapeHtml(st.description || '')}</div>
+          ${detailsHtml}
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    async function loadDocumentIntoStudio(baseName) {
+      try {
+        const res = await fetch(`/api/history/${encodeURIComponent(baseName)}`);
+        if (!res.ok) throw new Error('Could not load document');
+        const data = await res.json();
+        showResultsInStudio(data);
+      } catch (err) {
+        alert('ERROR LOADING DOCUMENT: ' + err.message);
+      }
+    }
+
+    btnAgentEdit.addEventListener('click', async () => {
+      const prompt = agentPromptInput.value.trim();
+      if (!prompt) return;
+
+      btnAgentEdit.disabled = true;
+      btnAgentEdit.textContent = 'AGENT RUNNING...';
+
+      try {
+        const resp = await fetch('/api/agent-edit', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            base_name: currentBaseName,
+            prompt: prompt,
+            markdown: markdownText.value,
+            model: document.getElementById('modelSelect').value
+          })
+        });
+
+        if (!resp.ok) {
+          const e = await resp.json();
+          throw new Error(e.detail || 'Agent edit failed');
+        }
+
+        const data = await resp.json();
+        markdownText.value = data.markdown;
+        renderPreview(data.markdown);
+        agentPromptInput.value = '';
+        loadChatHistory(currentBaseName);
+        if (data.steps) {
+          renderSteps(data.steps);
+        }
+        alert('AGENT UPDATED MARKDOWN AND REFRESHED STUDIO PREVIEW!');
+      } catch (err) {
+        alert('AGENT ERROR: ' + err.message);
+      } finally {
+        btnAgentEdit.disabled = false;
+        btnAgentEdit.textContent = 'APPLY WITH AGENT';
+      }
+    });
+
+    btnRecompileDocx.addEventListener('click', async () => {
+      btnRecompileDocx.disabled = true;
+      btnRecompileDocx.textContent = 'REBUILDING...';
+
+      try {
+        const resp = await fetch('/api/recompile', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            base_name: currentBaseName,
+            markdown: markdownText.value
+          })
+        });
+
+        if (!resp.ok) {
+          const e = await resp.json();
+          throw new Error(e.detail || 'Recompile failed');
+        }
+
+        const data = await resp.json();
+        showResultsInStudio(data);
+        alert('WORD DOCUMENT (.DOCX) REBUILT SUCCESSFULLY!');
+      } catch (err) {
+        alert('RECOMPILE ERROR: ' + err.message);
+      } finally {
+        btnRecompileDocx.disabled = false;
+        btnRecompileDocx.textContent = 'REBUILD WORD (.DOCX)';
+      }
+    });
+
+    function normalizeMarkdownForPreview(md) {
+      if (!md) return '';
+      let res = md.replace(/```(?:xml|svg)\s*(<svg[\s\S]*?<\/svg>)\s*```/gi, (match, svg) => {
+        return '\n\n' + svg + '\n\n';
+      });
+
+      const lines = res.split('\n');
+      const merged = [];
+      let inRow = false;
+      for (const line of lines) {
+        const s = line.trim();
+        if (inRow) {
+          if (s.endsWith('|') && !s.startsWith('|')) {
+            merged[merged.length - 1] += '<br>' + s;
+            inRow = false;
+          } else if (s.startsWith('|') && s.endsWith('|')) {
+            inRow = true;
+            merged.push(s);
+          } else {
+            merged[merged.length - 1] += '<br>' + s;
+          }
+        } else {
+          if (s.startsWith('|') && !s.endsWith('|')) {
+            inRow = true;
+            merged.push(s);
+          } else {
+            merged.push(line);
+          }
+        }
+      }
+      return merged.join('\n');
+    }
+
+    function renderPreview(md) {
+      const cleanMd = normalizeMarkdownForPreview(md);
+      let html = marked.parse(cleanMd);
+      docPreview.innerHTML = html;
+      if (window.renderMathInElement) {
+        renderMathInElement(docPreview, {
+          delimiters: [
+            {left: '$$', right: '$$', display: true},
+            {left: '$', right: '$', display: false}
+          ],
+          throwOnError: false
+        });
+      }
+    }
+
+    // --- LIBRARY / HISTORY VIEW LOGIC ---
+    let allHistoryDocs = [];
+
+    async function loadHistory() {
+      const tbody = document.getElementById('historyTableBody');
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--muted-foreground); text-transform: uppercase;">REFRESHING ARCHIVES...</td></tr>';
+      try {
+        const res = await fetch('/api/history');
+        if (!res.ok) throw new Error('Failed to fetch history');
+        const data = await res.json();
+        allHistoryDocs = data.documents || [];
+
+        document.getElementById('statTotalDocs').textContent = data.total_docs;
+        document.getElementById('statTotalSize').textContent = formatBytes(data.total_size);
+        document.getElementById('statTotalTime').textContent = data.formatted_total_duration || '0.0s';
+        document.getElementById('statTotalCost').textContent = data.formatted_total_cost || '$0.0000';
+
+        renderHistoryTable(allHistoryDocs);
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="6" style="color: #ef4444; text-transform: uppercase;">ERROR: ${err.message}</td></tr>`;
+      }
+    }
+
+    function renderHistoryTable(docs) {
+      const tbody = document.getElementById('historyTableBody');
+      if (docs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--muted-foreground); text-transform: uppercase;">NO MATCHING ARCHIVAL DOCUMENTS.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = '';
+      docs.forEach(doc => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>
+            <div style="font-weight: 700; font-size: 0.95rem; text-transform: uppercase;">${doc.display_title}</div>
+            <div style="font-size: 0.75rem; color: var(--muted-foreground); font-family: var(--font-mono);">${doc.base_name}</div>
+          </td>
+          <td style="font-size: 0.85rem; font-family: var(--font-mono);">${doc.formatted_time}</td>
+          <td style="font-size: 0.85rem; font-family: var(--font-mono); font-weight: 700; color: var(--accent);">${doc.formatted_duration || 'N/A'}</td>
+          <td style="font-size: 0.85rem; font-family: var(--font-mono);"><span class="badge-tag accent">${doc.formatted_cost || '$0.0000'}</span></td>
+          <td style="font-size: 0.85rem; font-family: var(--font-mono);">${formatBytes(doc.size)}</td>
+          <td><span class="badge-tag">${doc.svg_count} SVGS</span></td>
+          <td>
+            <div style="display: flex; gap: 0.35rem;">
+              ${doc.has_docx ? '<span class="badge-tag accent">DOCX</span>' : ''}
+              ${doc.has_md ? '<span class="badge-tag">MD</span>' : ''}
+              ${doc.has_zip ? '<span class="badge-tag">ZIP</span>' : ''}
+            </div>
+          </td>
+          <td>
+            <div class="table-actions">
+              <button class="btn-action-small" onclick="loadDocumentIntoStudio('${doc.base_name}')">OPEN STUDIO</button>
+              ${doc.docx_name ? `<a href="/api/download/${encodeURIComponent(doc.docx_name)}" class="btn-action-small" download>DOCX</a>` : ''}
+              ${doc.zip_name ? `<a href="/api/download/${encodeURIComponent(doc.zip_name)}" class="btn-action-small" download>ZIP</a>` : ''}
+              <button class="btn-action-small danger" onclick="deleteHistoryDoc('${doc.base_name}')">DELETE</button>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    document.getElementById('historySearch')?.addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase();
+      const filtered = allHistoryDocs.filter(d => 
+        d.display_title.toLowerCase().includes(q) || d.base_name.toLowerCase().includes(q)
+      );
+      renderHistoryTable(filtered);
+    });
+
+    document.getElementById('btnRefreshHistory')?.addEventListener('click', loadHistory);
+
+    async function deleteHistoryDoc(baseName) {
+      if (!confirm(`Are you sure you want to delete '${baseName}' and all its assets?`)) return;
+      try {
+        const res = await fetch(`/api/history/${encodeURIComponent(baseName)}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Deletion failed');
+        loadHistory();
+      } catch (err) {
+        alert('ERROR DELETING DOCUMENT: ' + err.message);
+      }
+    }
+
+    // --- SANDBOX TOOLS LOGIC ---
+    const toolLatexInput = document.getElementById('toolLatexInput');
+    const toolLatexPreview = document.getElementById('toolLatexPreview');
+    const btnTestLatex = document.getElementById('btnTestLatex');
+    const toolLatexStatus = document.getElementById('toolLatexStatus');
+
+    function updateToolLatexPreview() {
+      const formula = toolLatexInput.value.trim();
+      try {
+        if (window.katex) {
+          katex.render(formula, toolLatexPreview, { displayMode: true, throwOnError: false });
+        }
+      } catch (e) {
+        toolLatexPreview.textContent = formula;
+      }
+    }
+
+    toolLatexInput.addEventListener('input', updateToolLatexPreview);
+
+    btnTestLatex.addEventListener('click', async () => {
+      toolLatexStatus.textContent = 'STATUS: TESTING OMML CONVERSION VIA MML2OMML.XSL...';
+      try {
+        const res = await fetch('/api/tools/validate-latex', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ latex: toolLatexInput.value.trim() })
+        });
+        const data = await res.json();
+        if (data.valid) {
+          toolLatexStatus.textContent = `STATUS: VALID &bull; GENERATED WORD OMML TAG <${data.tag}> (EDITABLE VIA ALT+=)`;
+          toolLatexStatus.style.borderColor = '#22c55e';
+        } else {
+          toolLatexStatus.textContent = `STATUS: FAILED &bull; ${data.error}`;
+          toolLatexStatus.style.borderColor = '#ef4444';
+        }
+      } catch (err) {
+        toolLatexStatus.textContent = `STATUS: ERROR &bull; ${err.message}`;
+      }
+    });
+
+    const toolSvgInput = document.getElementById('toolSvgInput');
+    const toolSvgPreview = document.getElementById('toolSvgPreview');
+    const btnTestSvg = document.getElementById('btnTestSvg');
+    const toolSvgStatus = document.getElementById('toolSvgStatus');
+
+    function updateToolSvgPreview() {
+      toolSvgPreview.innerHTML = toolSvgInput.value;
+    }
+
+    toolSvgInput.addEventListener('input', updateToolSvgPreview);
+
+    btnTestSvg.addEventListener('click', async () => {
+      toolSvgStatus.textContent = 'STATUS: VALIDATING SVG XML & VIEWBOX...';
+      try {
+        const res = await fetch('/api/tools/validate-svg', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ svg: toolSvgInput.value.trim() })
+        });
+        const data = await res.json();
+        if (data.valid) {
+          toolSvgStatus.textContent = `STATUS: VALID XML &bull; ELEMENTS: ${data.elements_count} &bull; VIEWBOX: ${data.viewbox || 'N/A'} &bull; SHAPE COMPATIBLE: YES`;
+          toolSvgStatus.style.borderColor = '#22c55e';
+        } else {
+          toolSvgStatus.textContent = `STATUS: INVALID SVG &bull; ${data.error}`;
+          toolSvgStatus.style.borderColor = '#ef4444';
+        }
+      } catch (err) {
+        toolSvgStatus.textContent = `STATUS: ERROR &bull; ${err.message}`;
+      }
+    });
+
+    // --- CONFIGURATION & SETTINGS LOGIC (SQLITE PERSISTENCE) ---
+    const settingsForm = document.getElementById('settingsForm');
+    const settingBaseUrl = document.getElementById('settingBaseUrl');
+    const settingApiKey = document.getElementById('settingApiKey');
+    const settingModel = document.getElementById('settingModel');
+    const settingMaxWorkers = document.getElementById('settingMaxWorkers');
+    const settingOutputDir = document.getElementById('settingOutputDir');
+    const settingsSaveStatus = document.getElementById('settingsSaveStatus');
+    const btnToggleApiKey = document.getElementById('btnToggleApiKey');
+
+    btnToggleApiKey?.addEventListener('click', () => {
+      const isPwd = settingApiKey.type === 'password';
+      settingApiKey.type = isPwd ? 'text' : 'password';
+      btnToggleApiKey.textContent = isPwd ? 'HIDE' : 'SHOW';
+    });
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/settings');
+        if (!res.ok) return;
+        const conf = await res.json();
+        settingBaseUrl.value = conf.api_base_url || '';
+        settingApiKey.value = conf.api_key_raw || '';
+        settingModel.value = conf.default_model || '';
+        settingMaxWorkers.value = conf.max_concurrent_jobs || '3';
+        settingOutputDir.value = conf.output_dir || '';
+        settingsSaveStatus.textContent = 'STATUS: ACTIVE FROM SQLITE';
+        settingsSaveStatus.style.color = '#22c55e';
+      } catch (err) {
+        settingsSaveStatus.textContent = 'STATUS: FAILED TO FETCH SETTINGS';
+        settingsSaveStatus.style.color = '#ef4444';
+      }
+    }
+
+    settingsForm?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      settingsSaveStatus.textContent = 'STATUS: SAVING TO SQLITE...';
+      settingsSaveStatus.style.color = 'var(--foreground)';
+
+      const payload = {
+        OPENAI_API_BASE_URL: settingBaseUrl.value.trim(),
+        OPENAI_API_KEY: settingApiKey.value.trim(),
+        AI_DEFAULT_MODEL: settingModel.value.trim(),
+        OUTPUT_PATH: settingOutputDir.value.trim(),
+        MAX_CONCURRENT_JOBS: settingMaxWorkers.value.trim()
+      };
+
+      try {
+        const res = await fetch('/api/settings', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error('Failed to save settings');
+        settingsSaveStatus.textContent = 'STATUS: SAVED & APPLIED IN SQLITE!';
+        settingsSaveStatus.style.color = '#22c55e';
+        pollQueueStatus();
+      } catch (err) {
+        settingsSaveStatus.textContent = 'STATUS: ERROR ' + err.message;
+        settingsSaveStatus.style.color = '#ef4444';
+      }
+    });
+
+    // --- PURGE CACHE & CLEAN DB LOGIC ---
+    const btnClearCache = document.getElementById('btnClearCache');
+    const clearCacheStatus = document.getElementById('clearCacheStatus');
+
+    btnClearCache?.addEventListener('click', async () => {
+      const confirmed = confirm("WARNING: This will delete all files in 'input/' and 'output/' and clear all job records and chat history from SQLite.\n\nYour API settings will be preserved.\n\nDo you want to proceed?");
+      if (!confirmed) return;
+
+      btnClearCache.disabled = true;
+      clearCacheStatus.textContent = 'STATUS: PURGING CACHE & CLEANING DB...';
+      clearCacheStatus.style.color = 'var(--foreground)';
+
+      try {
+        const res = await fetch('/api/settings/clear-cache', { method: 'POST' });
+        if (!res.ok) throw new Error('Clear cache request failed');
+        const data = await res.json();
+        clearCacheStatus.textContent = 'STATUS: ' + data.message.toUpperCase();
+        clearCacheStatus.style.color = '#22c55e';
+
+        // Refresh UI components
+        pollQueueStatus();
+        loadRecentJobsMini();
+        if (typeof loadHistory === 'function') {
+          loadHistory();
+        }
+
+        // Reset studio preview if open
+        const docPrev = document.getElementById('docPreview');
+        if (docPrev) {
+          docPrev.innerHTML = '<div style="text-align: center; color: var(--muted-foreground); text-transform: uppercase;">NO ACTIVE DOCUMENT LOADED. CONVERT A FILE OR SELECT ONE FROM LIBRARY.</div>';
+        }
+        const svgGal = document.getElementById('svgGallery');
+        if (svgGal) svgGal.innerHTML = '';
+        const mdText = document.getElementById('markdownText');
+        if (mdText) mdText.value = '';
+        const chatCont = document.getElementById('chatHistoryContainer');
+        if (chatCont) chatCont.innerHTML = '<div style="color: var(--muted-foreground); font-size: 0.85rem; text-transform: uppercase;">NO AGENT EDITS RECORDED YET.</div>';
+
+        alert('CACHE PURGED & DATABASE CLEANED SUCCESSFULLY!');
+      } catch (err) {
+        clearCacheStatus.textContent = 'STATUS: ERROR ' + err.message.toUpperCase();
+        clearCacheStatus.style.color = '#ef4444';
+        alert('ERROR: ' + err.message);
+      } finally {
+        btnClearCache.disabled = false;
+      }
+    });
+
+    // --- SKILLS & MCP EXTENSIONS LOGIC ---
+    let cachedSkills = [];
+    let cachedMcpServers = [];
+
+    // --- SKILLS MANAGEMENT ---
+    async function loadSkills() {
+      const grid = document.getElementById('skillsGrid');
+      const countBadge = document.getElementById('skillsTotalCount');
+      const pillsContainer = document.getElementById('agentSkillsPills');
+      grid.innerHTML = '<div style="color: var(--muted-foreground); text-transform: uppercase;">LOADING DISCOVERED SKILLS...</div>';
+
+      try {
+        const res = await fetch('/api/skills');
+        if (!res.ok) throw new Error('Failed to fetch skills');
+        const data = await res.json();
+        cachedSkills = data.skills || [];
+        countBadge.textContent = cachedSkills.length;
+
+        if (cachedSkills.length === 0) {
+          grid.innerHTML = '<div style="color: var(--muted-foreground); text-transform: uppercase;">NO SKILLS DISCOVERED.</div>';
+          return;
+        }
+
+        grid.innerHTML = '';
+        cachedSkills.forEach(s => {
+          const card = document.createElement('div');
+          card.className = 'skill-card';
+          card.innerHTML = `
+            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+              <div class="skill-header">
+                <span class="skill-name">${s.name}</span>
+                <span class="skill-scope-pill ${s.scope}">${s.scope}</span>
+              </div>
+              <div class="skill-desc">${s.description}</div>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 0.75rem; margin-top: 0.5rem;">
+              <button class="btn-action-small" onclick="openSkillInspector('${s.name}')">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                INSPECT
+              </button>
+              ${s.scope === 'local' ? `
+                <button class="btn-action-small danger" onclick="deleteLocalSkill('${s.name}')">DELETE</button>
+              ` : `
+                <span style="font-size: 0.7rem; color: var(--muted-foreground); font-family: var(--font-mono); text-transform: uppercase;">~/.agents/skills</span>
+              `}
+            </div>
+          `;
+          grid.appendChild(card);
+        });
+
+        // Populate quick inject pills in Studio
+        if (pillsContainer) {
+          pillsContainer.innerHTML = '';
+          cachedSkills.slice(0, 8).forEach(s => {
+            const pill = document.createElement('button');
+            pill.type = 'button';
+            pill.className = 'badge-tag';
+            pill.style.cursor = 'pointer';
+            pill.textContent = s.name;
+            pill.title = s.description;
+            pill.addEventListener('click', () => {
+              const input = document.getElementById('agentPromptInput');
+              const cmd = `use_skill: ${s.name} `;
+              if (!input.value.includes(cmd)) {
+                input.value = (cmd + input.value).trim();
+              }
+              input.focus();
+            });
+            pillsContainer.appendChild(pill);
+          });
+        }
+      } catch (err) {
+        grid.innerHTML = `<div style="color: #ef4444; text-transform: uppercase;">ERROR: ${err.message}</div>`;
+      }
+    }
+
+    async function openSkillInspector(name) {
+      const modal = document.getElementById('skillModal');
+      const title = document.getElementById('skillModalTitle');
+      const viewMode = document.getElementById('skillViewMode');
+      const form = document.getElementById('skillCreateForm');
+      const scopeBadge = document.getElementById('modalSkillScope');
+      const pathEl = document.getElementById('modalSkillPath');
+      const descEl = document.getElementById('modalSkillDesc');
+      const contentEl = document.getElementById('modalSkillContent');
+
+      title.textContent = `SKILL // ${name.toUpperCase()}`;
+      viewMode.style.display = 'block';
+      form.style.display = 'none';
+
+      contentEl.textContent = 'Loading skill instructions...';
+      modal.classList.add('active');
+
+      try {
+        const res = await fetch(`/api/skills/${encodeURIComponent(name)}`);
+        if (!res.ok) throw new Error('Skill not found');
+        const data = await res.json();
+        scopeBadge.textContent = data.scope.toUpperCase();
+        scopeBadge.className = `badge-tag ${data.scope === 'local' ? 'accent' : ''}`;
+        pathEl.textContent = data.path;
+        descEl.textContent = data.description;
+        contentEl.textContent = data.instructions;
+      } catch (err) {
+        contentEl.textContent = 'Error: ' + err.message;
+      }
+    }
+
+    document.getElementById('btnOpenNewSkillModal')?.addEventListener('click', () => {
+      const modal = document.getElementById('skillModal');
+      const title = document.getElementById('skillModalTitle');
+      const viewMode = document.getElementById('skillViewMode');
+      const form = document.getElementById('skillCreateForm');
+
+      title.textContent = 'CREATE NEW LOCAL AGENT SKILL';
+      viewMode.style.display = 'none';
+      form.style.display = 'flex';
+      form.reset();
+      modal.classList.add('active');
+    });
+
+    document.getElementById('btnCloseSkillModal')?.addEventListener('click', () => {
+      document.getElementById('skillModal').classList.remove('active');
+    });
+
+    document.getElementById('skillCreateForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const payload = {
+        name: document.getElementById('newSkillName').value.trim(),
+        description: document.getElementById('newSkillDesc').value.trim(),
+        instructions: document.getElementById('newSkillInstructions').value.trim()
+      };
+      try {
+        const res = await fetch('/api/skills', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'Failed to save skill');
+        }
+        document.getElementById('skillModal').classList.remove('active');
+        loadSkills();
+      } catch (err) {
+        alert('ERROR SAVING SKILL: ' + err.message);
+      }
+    });
+
+    async function deleteLocalSkill(name) {
+      if (!confirm(`Are you sure you want to delete local skill '${name}'?`)) return;
+      try {
+        const res = await fetch(`/api/skills/${encodeURIComponent(name)}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Failed to delete');
+        loadSkills();
+      } catch (err) {
+        alert('ERROR: ' + err.message);
+      }
+    }
+
+    // --- MCP SERVERS MANAGEMENT ---
+    async function loadMcpServers() {
+      const list = document.getElementById('mcpServersList');
+      const countBadge = document.getElementById('mcpServersTotalCount');
+      list.innerHTML = '<div style="color: var(--muted-foreground); text-transform: uppercase;">CONNECTING &amp; DISCOVERING MCP TOOLS...</div>';
+
+      try {
+        const res = await fetch('/api/mcp/servers');
+        if (!res.ok) throw new Error('Failed to fetch MCP servers');
+        const data = await res.json();
+        cachedMcpServers = data.servers || [];
+        countBadge.textContent = cachedMcpServers.length;
+
+        if (cachedMcpServers.length === 0) {
+          list.innerHTML = '<div style="color: var(--muted-foreground); text-transform: uppercase;">NO MCP SERVERS CONFIGURED. CLICK "CONNECT MCP SERVER" ABOVE.</div>';
+          return;
+        }
+
+        list.innerHTML = '';
+        cachedMcpServers.forEach(s => {
+          const isConn = s.status === 'connected';
+          const card = document.createElement('div');
+          card.className = 'mcp-server-card';
+          
+          let toolsHtml = '<span style="font-size: 0.8rem; color: var(--muted-foreground);">No tools discovered.</span>';
+          if (s.tools && s.tools.length > 0) {
+            toolsHtml = s.tools.map(t => `
+              <span class="mcp-tool-pill" title="${t.description || ''}" onclick="openSandboxWithMcpTool('${s.id}', '${t.name}')">
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                ${t.name}
+              </span>
+            `).join('');
+          }
+
+          card.innerHTML = `
+            <div class="mcp-server-header">
+              <div>
+                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                  <span style="font-size: 1.15rem; font-weight: 700; text-transform: uppercase;">${s.name}</span>
+                  <span class="badge-tag ${isConn ? 'accent' : ''}">${s.type.toUpperCase()}</span>
+                  <span style="font-size: 0.75rem; font-weight: 700; color: ${isConn ? '#22c55e' : '#ef4444'}; text-transform: uppercase;">
+                    &bull; ${s.status.toUpperCase()}
+                  </span>
+                </div>
+                <div style="font-size: 0.8rem; color: var(--muted-foreground); font-family: var(--font-mono); margin-top: 0.35rem;">
+                  ID: ${s.id} &bull; ${s.type === 'stdio' ? `CMD: ${s.command} ${(s.args || []).join(' ')}` : `URL: ${s.url}`}
+                </div>
+              </div>
+              <div style="display: flex; gap: 0.5rem;">
+                <button class="btn-action-small" onclick="testMcpServer('${s.id}')">
+                  <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                  PROBE TOOLS
+                </button>
+                <button class="btn-action-small danger" onclick="deleteMcpServer('${s.id}')">DISCONNECT</button>
+              </div>
+            </div>
+            <div>
+              <div style="font-size: 0.75rem; font-weight: 700; letter-spacing: 0.1em; color: var(--muted-foreground); text-transform: uppercase; margin-bottom: 0.5rem;">
+                // DISCOVERED AGENT TOOLS (${s.tools_count || 0})
+              </div>
+              <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                ${toolsHtml}
+              </div>
+            </div>
+          `;
+          list.appendChild(card);
+        });
+
+      } catch (err) {
+        list.innerHTML = `<div style="color: #ef4444; text-transform: uppercase;">ERROR: ${err.message}</div>`;
+      }
+    }
+
+    document.getElementById('btnOpenNewMcpModal')?.addEventListener('click', () => {
+      document.getElementById('mcpServerForm').reset();
+      document.getElementById('mcpStdioFields').style.display = 'flex';
+      document.getElementById('mcpHttpFields').style.display = 'none';
+      document.getElementById('mcpServerModal').classList.add('active');
+    });
+
+    document.getElementById('btnCloseMcpModal')?.addEventListener('click', () => {
+      document.getElementById('mcpServerModal').classList.remove('active');
+    });
+
+    document.getElementById('mcpServerType')?.addEventListener('change', (e) => {
+      const isHttp = e.target.value === 'http';
+      document.getElementById('mcpStdioFields').style.display = isHttp ? 'none' : 'flex';
+      document.getElementById('mcpHttpFields').style.display = isHttp ? 'flex' : 'none';
+    });
+
+    document.getElementById('mcpServerForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      let parsedArgs = [];
+      let parsedEnv = {};
+      try {
+        const rawArgs = document.getElementById('mcpServerArgs').value.trim();
+        if (rawArgs) parsedArgs = JSON.parse(rawArgs);
+      } catch (err) {
+        alert('Invalid JSON for Args: ' + err.message);
+        return;
+      }
+      try {
+        const rawEnv = document.getElementById('mcpServerEnv').value.trim();
+        if (rawEnv) parsedEnv = JSON.parse(rawEnv);
+      } catch (err) {
+        alert('Invalid JSON for Env: ' + err.message);
+        return;
+      }
+
+      const payload = {
+        id: document.getElementById('mcpServerId').value.trim(),
+        name: document.getElementById('mcpServerName').value.trim(),
+        type: document.getElementById('mcpServerType').value,
+        command: document.getElementById('mcpServerCommand').value.trim(),
+        args: parsedArgs,
+        env: parsedEnv,
+        url: document.getElementById('mcpServerUrl').value.trim(),
+        enabled: document.getElementById('mcpServerEnabled').checked ? 1 : 0
+      };
+
+      try {
+        const res = await fetch('/api/mcp/servers', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error('Failed to register MCP server');
+        document.getElementById('mcpServerModal').classList.remove('active');
+        loadMcpServers();
+      } catch (err) {
+        alert('ERROR CONNECTING MCP SERVER: ' + err.message);
+      }
+    });
+
+    async function testMcpServer(id) {
+      try {
+        const res = await fetch(`/api/mcp/servers/${encodeURIComponent(id)}/test`, { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          alert(`MCP SERVER '${id}' CONNECTED!\n\nDiscovered ${data.tools_count} tool(s):\n${(data.tools || []).map(t => '• ' + t.name).join('\n')}`);
+        } else {
+          alert(`MCP SERVER ERROR:\n${data.error}`);
+        }
+        loadMcpServers();
+      } catch (err) {
+        alert('ERROR: ' + err.message);
+      }
+    }
+
+    async function deleteMcpServer(id) {
+      if (!confirm(`Are you sure you want to disconnect MCP server '${id}'?`)) return;
+      try {
+        const res = await fetch(`/api/mcp/servers/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Failed to delete server');
+        loadMcpServers();
+      } catch (err) {
+        alert('ERROR: ' + err.message);
+      }
+    }
+
+    // --- SANDBOX MCP TOOL TESTER ---
+    async function loadSandboxMcpOptions() {
+      const serverSelect = document.getElementById('sandboxMcpServerSelect');
+      const toolSelect = document.getElementById('sandboxMcpToolSelect');
+      if (!serverSelect || !toolSelect) return;
+
+      if (cachedMcpServers.length === 0) {
+        try {
+          const res = await fetch('/api/mcp/servers');
+          const data = await res.json();
+          cachedMcpServers = data.servers || [];
+        } catch (e) {}
+      }
+
+      serverSelect.innerHTML = '';
+      cachedMcpServers.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s.id;
+        opt.textContent = `${s.name} (${s.id})`;
+        serverSelect.appendChild(opt);
+      });
+
+      updateSandboxToolsDropdown();
+    }
+
+    function updateSandboxToolsDropdown() {
+      const serverSelect = document.getElementById('sandboxMcpServerSelect');
+      const toolSelect = document.getElementById('sandboxMcpToolSelect');
+      const argsInput = document.getElementById('sandboxMcpArgsInput');
+      if (!serverSelect || !toolSelect) return;
+
+      const sid = serverSelect.value;
+      const s = cachedMcpServers.find(srv => srv.id === sid);
+      toolSelect.innerHTML = '';
+
+      if (s && s.tools && s.tools.length > 0) {
+        s.tools.forEach(t => {
+          const opt = document.createElement('option');
+          opt.value = t.name;
+          opt.textContent = t.name;
+          toolSelect.appendChild(opt);
+        });
+        updateSandboxArgsTemplate();
+      } else {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = 'No tools available on this server';
+        toolSelect.appendChild(opt);
+        argsInput.value = '{}';
+      }
+    }
+
+    function updateSandboxArgsTemplate() {
+      const serverSelect = document.getElementById('sandboxMcpServerSelect');
+      const toolSelect = document.getElementById('sandboxMcpToolSelect');
+      const argsInput = document.getElementById('sandboxMcpArgsInput');
+      if (!serverSelect || !toolSelect || !argsInput) return;
+
+      const s = cachedMcpServers.find(srv => srv.id === serverSelect.value);
+      if (!s) return;
+      const t = (s.tools || []).find(tool => tool.name === toolSelect.value);
+      if (!t || !t.inputSchema) {
+        argsInput.value = '{}';
+        return;
+      }
+
+      const sample = {};
+      const props = t.inputSchema.properties || {};
+      for (const [k, v] of Object.entries(props)) {
+        if (v.type === 'string') sample[k] = v.description || 'text';
+        else if (v.type === 'integer' || v.type === 'number') sample[k] = 100;
+        else if (v.type === 'boolean') sample[k] = true;
+        else if (v.type === 'array') sample[k] = [];
+        else sample[k] = {};
+      }
+      argsInput.value = JSON.stringify(sample, null, 2);
+    }
+
+    document.getElementById('sandboxMcpServerSelect')?.addEventListener('change', updateSandboxToolsDropdown);
+    document.getElementById('sandboxMcpToolSelect')?.addEventListener('change', updateSandboxArgsTemplate);
+
+    document.getElementById('btnTestMcpTool')?.addEventListener('click', async () => {
+      const serverId = document.getElementById('sandboxMcpServerSelect').value;
+      const toolName = document.getElementById('sandboxMcpToolSelect').value;
+      const statusEl = document.getElementById('toolMcpStatus');
+      const rawArgs = document.getElementById('sandboxMcpArgsInput').value.trim();
+
+      if (!serverId || !toolName) {
+        alert('Select a valid server and tool.');
+        return;
+      }
+
+      let parsedArgs = {};
+      try {
+        parsedArgs = rawArgs ? JSON.parse(rawArgs) : {};
+      } catch (e) {
+        alert('Invalid JSON in arguments: ' + e.message);
+        return;
+      }
+
+      statusEl.textContent = `STATUS: EXECUTING ${toolName} ON ${serverId}...`;
+      statusEl.style.borderColor = 'var(--border)';
+
+      try {
+        const res = await fetch('/api/mcp/tools/call', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            server_id: serverId,
+            tool_name: toolName,
+            arguments: parsedArgs
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          statusEl.textContent = `STATUS: SUCCESS (200 OK)\n\nOUTPUT:\n${data.output}`;
+          statusEl.style.borderColor = '#22c55e';
+        } else {
+          statusEl.textContent = `STATUS: FAILED\n\nERROR:\n${data.error}`;
+          statusEl.style.borderColor = '#ef4444';
+        }
+      } catch (err) {
+        statusEl.textContent = `STATUS: NETWORK ERROR\n\n${err.message}`;
+        statusEl.style.borderColor = '#ef4444';
+      }
+    });
+
+    window.openSandboxWithMcpTool = function(serverId, toolName) {
+      switchView('viewTools');
+      setTimeout(() => {
+        const sSelect = document.getElementById('sandboxMcpServerSelect');
+        if (sSelect) {
+          sSelect.value = serverId;
+          updateSandboxToolsDropdown();
+          const tSelect = document.getElementById('sandboxMcpToolSelect');
+          if (tSelect) {
+            tSelect.value = toolName;
+            updateSandboxArgsTemplate();
+          }
+        }
+      }, 100);
+    };
+
+    // Initial pre-load of skills and MCP servers
+    loadSkills();
+    loadMcpServers();
+  </script>
+</body>
+</html>

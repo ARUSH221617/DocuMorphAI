@@ -1,0 +1,145 @@
+"""
+Self-check validation test for DocuMorph AI.
+Tests:
+1. LaTeX to OMML (Alt+= equation) conversion
+2. SVG vector packaging into Word
+3. Table parsing with RTL support
+4. Agent tool execution (validate_latex, validate_svg, edit_markdown_snippet)
+5. Parsing and conversion of HTML (<br>, <b>, <u>) and XML/SVG code fences in markdown
+"""
+
+import os
+import io
+import json
+import docx
+from converter import latex_to_omml, add_svg_to_doc, markdown_to_docx, is_persian_or_arabic
+import agent
+import skills
+import mcp_manager
+
+def test_latex_to_omml():
+    omml = latex_to_omml(r"x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}")
+    assert omml is not None, "LaTeX to OMML conversion failed"
+    tag = omml.tag
+    assert "oMath" in tag, f"Unexpected OMML tag: {tag}"
+    print("✓ test_latex_to_omml passed")
+
+def test_persian_detection():
+    assert is_persian_or_arabic("سلام دنیا") is True
+    assert is_persian_or_arabic("Hello world") is False
+    print("✓ test_persian_detection passed")
+
+def test_svg_to_docx():
+    doc = docx.Document()
+    svg = '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><circle cx="50" cy="50" r="40" fill="red"/></svg>'
+    add_svg_to_doc(doc, svg)
+    buf = io.BytesIO()
+    doc.save(buf)
+    assert len(buf.getvalue()) > 0
+    print("✓ test_svg_to_docx passed")
+
+def test_agent_tools():
+    test_pdf = "input/jahat8-1 31.pdf"
+    if not os.path.exists(test_pdf):
+        os.makedirs("input", exist_ok=True)
+        import pypdfium2 as pdfium
+        d = pdfium.PdfDocument.new()
+        d.new_page(200, 200)
+        d.save(test_pdf)
+    ag = agent.DocuMorphAgent(test_pdf)
+    res_latex = json.loads(ag.execute_tool("validate_latex", {"formulas": [r"E = mc^2", r"\frac{a}{b}"]}))
+    assert all(r["valid"] for r in res_latex["results"]), "Agent validate_latex failed"
+
+    res_svg = json.loads(ag.execute_tool("validate_svg", {"svg_code": '<svg width="200" height="200" viewBox="0 0 200 200"></svg>'}))
+    assert res_svg["valid_xml"] is True and res_svg["has_viewbox"] is True
+
+    ag.execute_tool("update_markdown", {"content": "# Header\nQuestion 1: x = 2"})
+    ag.execute_tool("edit_markdown_snippet", {"search": "x = 2", "replace": "x = 5"})
+    assert "x = 5" in ag.markdown, "Agent edit_markdown_snippet failed"
+    print("✓ test_agent_tools passed")
+
+def test_xml_html_svg_conversion():
+    sample_snippet = """# Question with HTML & XML
+
+Line 1<br><br>```xml
+<svg id="fig-q12" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <circle cx="50" cy="50" r="40" fill="#3b82f6" />
+</svg>
+```<br>Line 2 with <b>bold</b> and <u>underline</u> and $x^2 + y^2 = 1$
+"""
+    out_docx = "output/_check_xml_html.docx"
+    svgs = markdown_to_docx(sample_snippet, out_docx, output_dir="output/_check_xml_html_svgs")
+    assert os.path.exists(out_docx)
+    assert len(svgs) == 1
+    assert os.path.exists(svgs[0])
+    
+    # Clean up
+    if os.path.exists(out_docx):
+        os.remove(out_docx)
+    if os.path.exists(svgs[0]):
+        os.remove(svgs[0])
+    if os.path.exists("output/_check_xml_html_svgs"):
+        os.rmdir("output/_check_xml_html_svgs")
+    print("✓ test_xml_html_svg_conversion passed")
+
+def test_skills_system():
+    all_skills = skills.list_skills()
+    assert len(all_skills) >= 4, f"Expected at least 4 skills, got {len(all_skills)}"
+    names = [s["name"] for s in all_skills]
+    assert "math-formula-extractor" in names
+    assert "svg-diagram-architect" in names
+    assert "page-layout-architect" in names
+    
+    sk = skills.get_skill("page-layout-architect")
+    assert sk is not None
+    assert "NEVER USE TABLES FOR PAGE OR EXAM LAYOUT" in sk["instructions"]
+    print("✓ test_skills_system passed")
+
+def test_mcp_system():
+    # Test MCP client tool discovery
+    tools, routing = mcp_manager.mcp_mgr.discover_all_tools()
+    assert len(tools) >= 3, f"Expected at least 3 MCP tools from built-in server, got {len(tools)}"
+    tool_names = [t["function"]["name"] for t in tools]
+    assert any("analyze_math_formulas" in tn for tn in tool_names)
+
+    # Test MCP tool call
+    res_raw = mcp_manager.mcp_mgr.call_tool("doc_utils", "math_term_dictionary", {"term": "derivative"})
+    res = json.loads(res_raw)
+    assert res.get("found") is True and res.get("translation") == "مشتق"
+
+    # Test Agent tool call integration
+    test_pdf = "input/jahat8-1 31.pdf"
+    ag = agent.DocuMorphAgent(test_pdf)
+    skills_json = json.loads(ag.execute_tool("list_skills", {}))
+    assert skills_json.get("skills_count", 0) >= 4
+
+    use_skill_json = json.loads(ag.execute_tool("use_skill", {"skill_name": "math-formula-extractor"}))
+    assert use_skill_json.get("status") == "loaded"
+
+    mcp_call_json = json.loads(ag.execute_tool("call_mcp_tool", {
+        "server_id": "doc_utils",
+        "tool_name": "math_term_dictionary",
+        "arguments": {"term": "integral"}
+    }))
+    assert mcp_call_json.get("status") == "success"
+    assert "انتگرال" in mcp_call_json.get("output", "")
+    print("✓ test_mcp_system passed")
+
+def test_agent_steps():
+    test_pdf = "input/jahat8-1 31.pdf"
+    ag = agent.DocuMorphAgent(test_pdf)
+    assert len(ag.steps) >= 1
+    assert ag.steps[0]["type"] == "init"
+    assert "DOCUMENT VISION" in ag.steps[0]["title"]
+    print("✓ test_agent_steps passed")
+
+if __name__ == "__main__":
+    test_latex_to_omml()
+    test_persian_detection()
+    test_svg_to_docx()
+    test_agent_tools()
+    test_xml_html_svg_conversion()
+    test_skills_system()
+    test_mcp_system()
+    test_agent_steps()
+    print("\nAll self-checks passed successfully!")
