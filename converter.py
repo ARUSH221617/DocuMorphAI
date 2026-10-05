@@ -8,10 +8,9 @@ Markdown to DOCX Converter with:
 """
 
 import html
-import io
 import os
 import re
-import sys
+import time
 import uuid
 import zipfile
 
@@ -22,7 +21,6 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import parse_xml
 from docx.shared import Inches, Pt
 from lxml import etree
-from PIL import Image
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 BUNDLED_XSLT = os.path.join(CURRENT_DIR, "assets", "MML2OMML.XSL")
@@ -38,31 +36,6 @@ def get_xslt():
         if os.path.exists(XSLT_PATH):
             _XSLT_TRANSFORM = etree.XSLT(etree.parse(XSLT_PATH))
     return _XSLT_TRANSFORM
-
-
-_QT_APP = None
-
-
-def get_qt_app():
-    """Ensure a singleton QGuiApplication is initialized safely for cross-thread rasterization."""
-    global _QT_APP
-    if _QT_APP is None:
-        try:
-            from PySide6.QtGui import QGuiApplication
-
-            _QT_APP = QGuiApplication.instance()
-            if _QT_APP is None:
-                _QT_APP = QGuiApplication(sys.argv if hasattr(sys, "argv") and sys.argv else ["documorph"])
-        except Exception:
-            pass
-    return _QT_APP
-
-
-# Initialize once at module load if on main thread
-try:
-    get_qt_app()
-except Exception:
-    pass
 
 
 def is_persian_or_arabic(text: str) -> bool:
@@ -118,48 +91,6 @@ def strip_visual_descriptions(md_text: str) -> str:
     return pattern.sub("", md_text).strip()
 
 
-def render_svg_to_png(svg_clean: str) -> bytes:
-    """
-    High-fidelity rasterization of SVG to PNG bytes for Word fallback image.
-    Word requires a valid non-empty PNG in a:blip to display the image.
-    Uses PySide6.QtSvg if available; falls back to clean Pillow raster image.
-    """
-    try:
-        from PySide6.QtCore import QBuffer, QByteArray
-        from PySide6.QtGui import QColor, QImage, QPainter
-        from PySide6.QtSvg import QSvgRenderer
-
-        get_qt_app()
-
-        renderer = QSvgRenderer(QByteArray(svg_clean.encode("utf-8")))
-        size = renderer.defaultSize()
-        w = int(size.width()) if size.width() > 0 else 400
-        h = int(size.height()) if size.height() > 0 else 200
-
-        scale = max(1.0, min(3.0, 800.0 / max(w, 1)))
-        img_w, img_h = int(w * scale), int(h * scale)
-
-        qimage = QImage(img_w, img_h, QImage.Format.Format_ARGB32)
-        qimage.fill(QColor(255, 255, 255, 255))
-
-        painter = QPainter(qimage)
-        renderer.render(painter)
-        painter.end()
-
-        qbuf = QBuffer()
-        qbuf.open(QBuffer.OpenModeFlag.WriteOnly)
-        qimage.save(qbuf, "PNG")
-        png_data = bytes(qbuf.data())
-        if len(png_data) > 100:
-            return png_data
-    except Exception:
-        pass
-
-    bio = io.BytesIO()
-    Image.new("RGB", (400, 200), (255, 255, 255)).save(bio, format="PNG")
-    return bio.getvalue()
-
-
 def sanitize_svg_dimensions(svg_content: str) -> str:
     """Ensure SVG XML has explicit width, height, viewBox, and required namespace attributes."""
     svg = svg_content.strip()
@@ -191,40 +122,110 @@ def sanitize_svg_dimensions(svg_content: str) -> str:
     return svg
 
 
+def compute_svg_emus(svg_clean: str, target_width_inches: float = 3.8) -> tuple[int, int]:
+    """Compute exact cx and cy in EMUs preserving SVG aspect ratio."""
+    w_match = re.search(r'\bwidth\s*=\s*["\']\s*([0-9.]+)', svg_clean, re.I)
+    h_match = re.search(r'\bheight\s*=\s*["\']\s*([0-9.]+)', svg_clean, re.I)
+    vb_match = re.search(
+        r'\bviewBox\s*=\s*["\']\s*([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)', svg_clean, re.I
+    )
+
+    w, h = None, None
+    if w_match and h_match:
+        try:
+            w, h = float(w_match.group(1)), float(h_match.group(1))
+        except Exception:
+            pass
+    if (not w or not h) and vb_match:
+        try:
+            w, h = float(vb_match.group(3)), float(vb_match.group(4))
+        except Exception:
+            pass
+
+    if not w or not h or w <= 0 or h <= 0:
+        w, h = 300.0, 200.0
+
+    aspect = h / w
+    cx = int(target_width_inches * 914400)
+    cy = int(cx * aspect)
+    return cx, cy
+
+
 def add_svg_to_doc(doc, svg_content: str, width=Inches(3.8), target_paragraph=None):
     """
-    Insert SVG directly into Word document with full vector shape support (asvg:svgBlip)
-    AND high-resolution rendered PNG fallback so Word immediately renders image visually.
-    Allows user to right-click -> 'Convert to Shape' in Microsoft Word.
+    Directly insert SVG as pure vector media into Word document (asvg:svgBlip).
+    Does NOT create, insert, or reference any PNG raster file.
+    Enables Word's native 'Graphic Format' ribbon and 'Convert to Shape' / 'Convert to Object' context menu.
     """
     p = target_paragraph if target_paragraph is not None else doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     svg_clean = sanitize_svg_dimensions(svg_content)
-
-    # 1. Generate real rasterized PNG so Word renders visually immediately
-    png_bytes = render_svg_to_png(svg_clean)
-
-    run = p.add_run()
-    pic = run.add_picture(io.BytesIO(png_bytes), width=width)
-
-    # 2. Add SVG media part and link asvg:svgBlip
     svg_bytes = svg_clean.encode("utf-8")
-    part_name = f"/word/media/image_{uuid.uuid4().hex[:8]}.svg"
+
+    # 1. Create pure SVG media part directly in document package
+    svg_id = uuid.uuid4().hex[:8]
+    part_name = f"/word/media/image_{svg_id}.svg"
     svg_part = docx.opc.part.Part(docx.opc.packuri.PackURI(part_name), "image/svg+xml", svg_bytes)
     svg_rId = doc.part.relate_to(svg_part, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image")
 
-    blip = pic._inline.graphic.graphicData.pic.blipFill.blip
-    ext_xml = f"""
-    <a:extLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
-        <a:ext uri="{{96DAC542-00C1-44C9-A059-E6573EC2B148}}">
-            <asvg:svgBlip xmlns:asvg="http://schemas.microsoft.com/office/drawing/2016/SVG/main"
-                          xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
-                          r:embed="{svg_rId}"/>
-        </a:ext>
-    </a:extLst>
+    # 2. Compute exact extent in EMUs
+    width_inches = float(width) / 914400.0 if isinstance(width, int) else 3.8
+    cx, cy = compute_svg_emus(svg_clean, width_inches)
+
+    doc_pr_id = int(time.time() * 1000) % 1000000
+
+    # 3. Construct DrawingML with asvg:svgBlip pointing directly to the SVG media part
+    inline_xml = f"""
+    <wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+               xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+               xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"
+               xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+               xmlns:asvg="http://schemas.microsoft.com/office/drawing/2016/SVG/main"
+               distT="0" distB="0" distL="0" distR="0">
+        <wp:extent cx="{cx}" cy="{cy}"/>
+        <wp:docPr id="{doc_pr_id}" name="Vector Graphic {svg_id}" descr="SVG Vector Shape"/>
+        <wp:cNvGraphicFramePr>
+            <a:graphicFrameLocks noChangeAspect="1"/>
+        </wp:cNvGraphicFramePr>
+        <a:graphic>
+            <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                <pic:pic>
+                    <pic:nvPicPr>
+                        <pic:cNvPr id="0" name="image_{svg_id}.svg" descr="vector shape graphic"/>
+                        <pic:cNvPicPr/>
+                    </pic:nvPicPr>
+                    <pic:blipFill>
+                        <a:blip r:embed="{svg_rId}">
+                            <a:extLst>
+                                <a:ext uri="{{96DAC542-00C1-44C9-A059-E6573EC2B148}}">
+                                    <asvg:svgBlip r:embed="{svg_rId}"/>
+                                </a:ext>
+                            </a:extLst>
+                        </a:blip>
+                        <a:stretch>
+                            <a:fillRect/>
+                        </a:stretch>
+                    </pic:blipFill>
+                    <pic:spPr>
+                        <a:xfrm>
+                            <a:off x="0" y="0"/>
+                            <a:ext cx="{cx}" cy="{cy}"/>
+                        </a:xfrm>
+                        <a:prstGeom prst="rect">
+                            <a:avLst/>
+                        </a:prstGeom>
+                    </pic:spPr>
+                </pic:pic>
+            </a:graphicData>
+        </a:graphic>
+    </wp:inline>
     """
-    blip.append(parse_xml(ext_xml))
+    run = p.add_run()
+    drawing = parse_xml(
+        f'<w:drawing xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">{inline_xml}</w:drawing>'
+    )
+    run._r.append(drawing)
     return p
 
 

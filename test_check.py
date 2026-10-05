@@ -277,6 +277,10 @@ def test_svg_word_compatibility():
         assert "xmlns:asvg=" in doc_xml, "xmlns:asvg not declared on w:document"
         assert "asvg" in doc_xml, "asvg not in mc:Ignorable"
 
+        media_files = [n for n in z.namelist() if "media/" in n]
+        assert not any(m.lower().endswith(".png") for m in media_files), f"PNG found in docx media: {media_files}"
+        assert any(m.lower().endswith(".svg") for m in media_files), "No SVG found in docx media!"
+
     if os.path.exists(test_docx):
         os.remove(test_docx)
     print("✓ test_svg_word_compatibility passed")
