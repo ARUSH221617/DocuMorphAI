@@ -56,6 +56,13 @@ def latex_to_omml(latex_code: str):
         code = re.sub(r'\\square', '☐', code)
         code = re.sub(r'\\checkmark', '✓', code)
         code = re.sub(r'\\color\{[a-zA-Z]+\}\{(.*?)\}', r'\1', code)
+
+        # Transform spacing commands into non-breaking spaces so Word OMML renders spacing correctly
+        code = re.sub(r'\\qquad(?![a-zA-Z])', r'\\text{    }', code)
+        code = re.sub(r'\\quad(?![a-zA-Z])', r'\\text{  }', code)
+        code = re.sub(r'\\enspace(?![a-zA-Z])', r'\\text{  }', code)
+        code = re.sub(r'\\(?:thickspace|medspace)(?![a-zA-Z])', r'\\text{ }', code)
+        code = re.sub(r'\\thinspace(?![a-zA-Z])', r'\\text{ }', code)
         
         mml = latex2mathml.converter.convert(code)
         clean_mml = re.sub(r'&(?!(?:[a-zA-Z]+|#\d+|#x[0-9a-fA-F]+);)', '&amp;', mml)
@@ -175,6 +182,12 @@ def clean_html_tags(text: str) -> str:
     s = re.sub(r'<\/?(?:b|strong)>', '**', s, flags=re.I)
     s = re.sub(r'<\/?(?:i|em)>', '*', s, flags=re.I)
     s = re.sub(r'<\/?(?:div|span|font|p)[^>]*>', '', s, flags=re.I)
+
+    # Clean LaTeX spacing commands that leaked into regular text outside math
+    s = re.sub(r'\\qquad(?![a-zA-Z])', '    ', s)
+    s = re.sub(r'\\quad(?![a-zA-Z])', '   ', s)
+    s = re.sub(r'\\enspace(?![a-zA-Z])', '  ', s)
+    s = re.sub(r'\\(?:thickspace|medspace|thinspace)(?![a-zA-Z])', ' ', s)
     return s
 
 def append_formatted_text(p, text: str, font_name="Vazirmatn", font_size=11):
@@ -323,7 +336,12 @@ def normalize_markdown(md_text: str) -> str:
     # Collapse ```xml <svg...>``` fences into standalone <svg>
     md_text = re.sub(r'```(?:xml|svg)\s*(<svg[\s\S]*?<\/svg>)\s*```', replace_xml_block, md_text, flags=re.IGNORECASE)
 
-    # 3. Join multi-line table rows
+    # 3. Clean raw \qquad and \quad in markdown text
+    md_text = re.sub(r'\\qquad(?![a-zA-Z])', '    ', md_text)
+    md_text = re.sub(r'\\quad(?![a-zA-Z])', '   ', md_text)
+    md_text = re.sub(r'\\enspace(?![a-zA-Z])', '  ', md_text)
+
+    # 4. Join multi-line table rows
     lines = md_text.replace('\r\n', '\n').split('\n')
     merged_lines = []
     in_table_row = False

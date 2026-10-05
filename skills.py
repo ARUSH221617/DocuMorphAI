@@ -139,6 +139,7 @@ def init_default_skills():
 3. Gotchas to avoid:
    - Do NOT use unescaped ampersands `&` outside of `\\begin{matrix}` or aligned environments.
    - Do NOT use non-standard LaTeX packages or commands (e.g. `\\color`, `\\tikz`).
+   - Do NOT use `\\qquad` or `\\quad` in regular text; use standard spaces.
    - Keep LaTeX pure without embedded HTML.
 """
         ),

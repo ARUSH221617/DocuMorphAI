@@ -197,6 +197,32 @@ def test_api_context_window_and_tiktoken():
     assert res["context_limit"] == 1048576
     print("✓ test_api_context_window_and_tiktoken passed")
 
+def test_latex_spacing_and_qquad():
+    import converter
+    import docx
+    import os
+
+    # 1. Test in latex_to_omml
+    formula = r"x = 1 \qquad y = 2"
+    omml = converter.latex_to_omml(formula)
+    assert omml is not None, "Failed to convert formula with \\qquad"
+    from lxml import etree
+    xml = etree.tostring(omml).decode("utf-8")
+    assert "&#160;" in xml or "\u00a0" in xml
+
+    # 2. Test in markdown_to_docx
+    test_md = r"Choice: الف) $x = 1$ \qquad ب) $x = 2$"
+    out_docx = "output/_check_qquad.docx"
+    converter.markdown_to_docx(test_md, out_docx)
+    assert os.path.exists(out_docx)
+    d = docx.Document(out_docx)
+    text = " ".join(p.text for p in d.paragraphs)
+    assert r"\qquad" not in text
+    assert r"\quad" not in text
+    if os.path.exists(out_docx):
+        os.remove(out_docx)
+    print("✓ test_latex_spacing_and_qquad passed")
+
 if __name__ == "__main__":
     test_latex_to_omml()
     test_persian_detection()
@@ -209,4 +235,5 @@ if __name__ == "__main__":
     test_dynamic_models()
     test_token_and_context_window()
     test_api_context_window_and_tiktoken()
+    test_latex_spacing_and_qquad()
     print("\nAll self-checks passed successfully!")

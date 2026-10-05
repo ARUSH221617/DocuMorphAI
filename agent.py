@@ -420,7 +420,7 @@ Strict Guidelines:
 3. Write ONLY pure standard Markdown (MD).
 4. DO NOT use HTML tags (NO <br>, NO <div>, NO <span>, NO <b>, NO <u>, NO <table>).
 5. XML is ONLY permitted inside SVG blocks (```xml or ```svg). Outside of SVG code blocks, HTML/XML is strictly forbidden.
-6. Write all formulas in LaTeX ($...$ and $$...$$).
+6. Write all formulas in LaTeX ($...$ and $$...$$). Do NOT output raw `\\qquad` or `\\quad` in regular text outside of math; use standard spaces.
 7. Made visuals like shapes, diagrams, and figures in clean SVG blocks (```xml or ```svg) directly in their place.
 8. NEVER WRAP EXAM PAGES OR QUESTIONS IN A TABLE. Do not replicate the physical exam 3-column grid (`ردیف / سوال / بارم`) as a table. Write questions as standard sequential Markdown (`**۱-** سوال... (۱.۵ نمره)`). Tables are strictly for actual tabular data.
 9. Use `update_markdown` or `edit_markdown_snippet` to update content.

@@ -56,7 +56,7 @@ Strict Guidelines:
 4. DO NOT use HTML tags (NO <br>, NO <div>, NO <span>, NO <b>, NO <u>, NO <font>, NO <table>).
 5. For line breaks and paragraphs, use standard markdown blank lines and spaces.
 6. XML / HTML is ONLY permitted inside SVG code blocks (```xml or ```svg). Outside of SVG visuals, never use HTML/XML tags.
-7. All formulas and math expressions must be written in standard LaTeX ($...$ for inline, $$...$$ for display equations).
+7. All formulas and math expressions must be written in standard LaTeX ($...$ for inline, $$...$$ for display equations). Do NOT use \\qquad or \\quad in regular text; use standard spaces.
 8. Made visuals like shapes, diagrams, coordinate planes, and geometric figures in standalone SVG blocks (```xml or ```svg) directly where they appear in the content.
 9. NEVER wrap the whole exam or questions list in a table. Do NOT create a 3-column table (ردیف / سوال / بارم). Write questions as standard sequential Markdown (**۱-** سوال... بارم: ۱.۵). Tables are strictly for genuine tabular data only.
 10. Persian & Arabic: retain Persian/Arabic question numbering (e.g. ۱-, ۲-) and keep embedded formulas standard LTR LaTeX.
