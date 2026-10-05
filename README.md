@@ -108,11 +108,23 @@ Fast single-pass pipeline:
 py -3.13 app.py input/document.pdf --mode fast
 ```
 
-### 3. Run Self-Checks
+### 3. Run Self-Checks & Code Quality
 
-Run verification suite (OMML equations, SVG vector embedding, Persian RTL detection, agent tools, HTML/XML normalization, Skills engine, and MCP JSON-RPC protocol):
+Run verification suite (OMML equations, SVG vector embedding, Persian RTL detection, agent tools, HTML/XML normalization, Skills engine, MCP JSON-RPC protocol, and Ruff formatting/linting):
 ```bash
 py -3.13 test_check.py
+```
+
+Lint and format codebase with Ruff:
+```bash
+# Check lint rules
+py -3.13 -m ruff check .
+
+# Auto-fix lint issues
+py -3.13 -m ruff check --fix .
+
+# Format code
+py -3.13 -m ruff format .
 ```
 
 ---

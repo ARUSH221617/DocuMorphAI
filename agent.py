@@ -9,33 +9,35 @@ Autonomous agent loop using function calling tools:
 - build_docx_output
 """
 
-import os
-import json
 import base64
 import io
-import re
+import json
+import os
 import time
-from typing import List, Dict, Any, Optional, Callable
+from collections.abc import Callable
+from typing import Any
+
 import dotenv
 import openai
-from PIL import Image
 import pypdfium2 as pdfium
 from lxml import etree
-import latex2mathml.converter
+from PIL import Image
 
 import converter
 import db
-import skills
 import mcp_manager
+import skills
 
 dotenv.load_dotenv()
 config = dotenv.dotenv_values(".env")
+
 
 def get_config(key: str, default: str = "") -> str:
     val = db.get_setting(key)
     if val:
         return val
     return os.getenv(key) or config.get(key) or default
+
 
 OPENAI_API_BASE_URL = get_config("OPENAI_API_BASE_URL", "http://localhost:20128/v1")
 OPENAI_API_KEY = get_config("OPENAI_API_KEY", "")
@@ -50,15 +52,10 @@ AGENT_TOOLS = [
             "description": "View rendered image of document page (1-based index). Returns base64 image and dimensions.",
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "page_number": {
-                        "type": "integer",
-                        "description": "Page number to view (starts at 1)."
-                    }
-                },
-                "required": ["page_number"]
-            }
-        }
+                "properties": {"page_number": {"type": "integer", "description": "Page number to view (starts at 1)."}},
+                "required": ["page_number"],
+            },
+        },
     },
     {
         "type": "function",
@@ -67,15 +64,10 @@ AGENT_TOOLS = [
             "description": "Set or replace whole markdown document content.",
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "content": {
-                        "type": "string",
-                        "description": "Full structured markdown text."
-                    }
-                },
-                "required": ["content"]
-            }
-        }
+                "properties": {"content": {"type": "string", "description": "Full structured markdown text."}},
+                "required": ["content"],
+            },
+        },
     },
     {
         "type": "function",
@@ -85,18 +77,12 @@ AGENT_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "search": {
-                        "type": "string",
-                        "description": "Exact text to find."
-                    },
-                    "replace": {
-                        "type": "string",
-                        "description": "New replacement text."
-                    }
+                    "search": {"type": "string", "description": "Exact text to find."},
+                    "replace": {"type": "string", "description": "New replacement text."},
                 },
-                "required": ["search", "replace"]
-            }
-        }
+                "required": ["search", "replace"],
+            },
+        },
     },
     {
         "type": "function",
@@ -109,12 +95,12 @@ AGENT_TOOLS = [
                     "formulas": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Array of LaTeX formula strings to test."
+                        "description": "Array of LaTeX formula strings to test.",
                     }
                 },
-                "required": ["formulas"]
-            }
-        }
+                "required": ["formulas"],
+            },
+        },
     },
     {
         "type": "function",
@@ -123,15 +109,10 @@ AGENT_TOOLS = [
             "description": "Validate SVG XML markup. Checks XML syntax and presence of width/height/viewBox attributes.",
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "svg_code": {
-                        "type": "string",
-                        "description": "SVG XML code."
-                    }
-                },
-                "required": ["svg_code"]
-            }
-        }
+                "properties": {"svg_code": {"type": "string", "description": "SVG XML code."}},
+                "required": ["svg_code"],
+            },
+        },
     },
     {
         "type": "function",
@@ -140,25 +121,17 @@ AGENT_TOOLS = [
             "description": "Compile current markdown into final Word .docx document with OMML math equations and SVG pictures.",
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "doc_title": {
-                        "type": "string",
-                        "description": "Optional title for document."
-                    }
-                }
-            }
-        }
+                "properties": {"doc_title": {"type": "string", "description": "Optional title for document."}},
+            },
+        },
     },
     {
         "type": "function",
         "function": {
             "name": "list_skills",
             "description": "List all available domain skills with descriptions (e.g. math formulas, SVG diagrams, table styling, Persian typography).",
-            "parameters": {
-                "type": "object",
-                "properties": {}
-            }
-        }
+            "parameters": {"type": "object", "properties": {}},
+        },
     },
     {
         "type": "function",
@@ -168,14 +141,11 @@ AGENT_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "skill_name": {
-                        "type": "string",
-                        "description": "Name of the skill to retrieve instructions for."
-                    }
+                    "skill_name": {"type": "string", "description": "Name of the skill to retrieve instructions for."}
                 },
-                "required": ["skill_name"]
-            }
-        }
+                "required": ["skill_name"],
+            },
+        },
     },
     {
         "type": "function",
@@ -187,22 +157,17 @@ AGENT_TOOLS = [
                 "properties": {
                     "server_id": {
                         "type": "string",
-                        "description": "Configured MCP server identifier (e.g. 'doc_utils')."
+                        "description": "Configured MCP server identifier (e.g. 'doc_utils').",
                     },
-                    "tool_name": {
-                        "type": "string",
-                        "description": "Name of the tool on the MCP server."
-                    },
-                    "arguments": {
-                        "type": "object",
-                        "description": "JSON arguments matching tool input schema."
-                    }
+                    "tool_name": {"type": "string", "description": "Name of the tool on the MCP server."},
+                    "arguments": {"type": "object", "description": "JSON arguments matching tool input schema."},
                 },
-                "required": ["server_id", "tool_name"]
-            }
-        }
-    }
+                "required": ["server_id", "tool_name"],
+            },
+        },
+    },
 ]
+
 
 class DocuMorphAgent:
     def __init__(self, file_path: str, model: str = None, output_dir: str = None):
@@ -210,30 +175,27 @@ class DocuMorphAgent:
         self.model = model or AI_DEFAULT_MODEL
         self.output_dir = output_dir or OUTPUT_DIR
         os.makedirs(self.output_dir, exist_ok=True)
-        
+
         url = db.get_setting("OPENAI_API_BASE_URL") or OPENAI_API_BASE_URL
         key = db.get_setting("OPENAI_API_KEY") or OPENAI_API_KEY or "dummy_key"
-        self.client = openai.OpenAI(
-            base_url=url,
-            api_key=key
-        )
-        
+        self.client = openai.OpenAI(base_url=url, api_key=key)
+
         # Load pages
-        self.pages: List[Image.Image] = []
+        self.pages: list[Image.Image] = []
         self._load_document()
-        
+
         # Discover and prepare MCP tools
         self.mcp_tools, self.mcp_routing = mcp_manager.mcp_mgr.discover_all_tools()
         self.all_tools = AGENT_TOOLS + self.mcp_tools
-        self.active_skills_loaded: List[str] = []
-        self.steps: List[Dict[str, Any]] = [
+        self.active_skills_loaded: list[str] = []
+        self.steps: list[dict[str, Any]] = [
             {
                 "step": 1,
                 "type": "init",
                 "title": "DOCUMENT VISION INGESTED",
                 "description": f"Loaded {len(self.pages)} page(s) at 2x render scale for multimodal vision inspection.",
                 "status": "success",
-                "time": time.strftime("%H:%M:%S")
+                "time": time.strftime("%H:%M:%S"),
             }
         ]
 
@@ -241,8 +203,8 @@ class DocuMorphAgent:
         self.base_name = os.path.splitext(os.path.basename(file_path))[0]
         self.docx_path = os.path.join(self.output_dir, f"{self.base_name}.docx")
         self.svgs_dir = os.path.join(self.output_dir, f"{self.base_name}_svgs")
-        self.exported_svgs: List[str] = []
-        self.history: List[Dict[str, Any]] = []
+        self.exported_svgs: list[str] = []
+        self.history: list[dict[str, Any]] = []
         self.prompt_tokens: int = 0
         self.completion_tokens: int = 0
 
@@ -260,7 +222,7 @@ class DocuMorphAgent:
         else:
             raise ValueError(f"Unsupported format: {ext}")
 
-    def execute_tool(self, name: str, args: Dict[str, Any]) -> str:
+    def execute_tool(self, name: str, args: dict[str, Any]) -> str:
         """Execute agent tool and return JSON result string."""
         if name == "view_page_image":
             p_num = args.get("page_number", 1)
@@ -269,22 +231,22 @@ class DocuMorphAgent:
                 buf = io.BytesIO()
                 img.save(buf, format="JPEG", quality=85)
                 b64 = base64.b64encode(buf.getvalue()).decode()
-                return json.dumps({
-                    "page_number": p_num,
-                    "total_pages": len(self.pages),
-                    "width": img.width,
-                    "height": img.height,
-                    "image_data_uri": f"data:image/jpeg;base64,{b64[:200]}...[truncated]"
-                })
+                return json.dumps(
+                    {
+                        "page_number": p_num,
+                        "total_pages": len(self.pages),
+                        "width": img.width,
+                        "height": img.height,
+                        "image_data_uri": f"data:image/jpeg;base64,{b64[:200]}...[truncated]",
+                    }
+                )
             return json.dumps({"error": f"Invalid page number {p_num}. Total: {len(self.pages)}"})
 
         elif name == "update_markdown":
             self.markdown = args.get("content", "")
-            return json.dumps({
-                "status": "success",
-                "length": len(self.markdown),
-                "contains_svg": "<svg" in self.markdown.lower()
-            })
+            return json.dumps(
+                {"status": "success", "length": len(self.markdown), "contains_svg": "<svg" in self.markdown.lower()}
+            )
 
         elif name == "edit_markdown_snippet":
             search = args.get("search", "")
@@ -307,13 +269,15 @@ class DocuMorphAgent:
             try:
                 elem = etree.fromstring(svg.encode("utf-8"))
                 has_viewbox = "viewBox" in elem.attrib or "viewbox" in elem.attrib
-                return json.dumps({
-                    "valid_xml": True,
-                    "tag": elem.tag,
-                    "has_viewbox": has_viewbox,
-                    "width": elem.attrib.get("width"),
-                    "height": elem.attrib.get("height")
-                })
+                return json.dumps(
+                    {
+                        "valid_xml": True,
+                        "tag": elem.tag,
+                        "has_viewbox": has_viewbox,
+                        "width": elem.attrib.get("width"),
+                        "height": elem.attrib.get("height"),
+                    }
+                )
             except Exception as e:
                 return json.dumps({"valid_xml": False, "error": str(e)})
 
@@ -321,24 +285,19 @@ class DocuMorphAgent:
             if not self.markdown:
                 return json.dumps({"error": "No markdown content to compile."})
             os.makedirs(self.svgs_dir, exist_ok=True)
-            self.exported_svgs = converter.markdown_to_docx(
-                self.markdown,
-                self.docx_path,
-                output_dir=self.svgs_dir
+            self.exported_svgs = converter.markdown_to_docx(self.markdown, self.docx_path, output_dir=self.svgs_dir)
+            return json.dumps(
+                {
+                    "status": "success",
+                    "docx_path": self.docx_path,
+                    "exported_svgs_count": len(self.exported_svgs),
+                    "svg_files": [os.path.basename(s) for s in self.exported_svgs],
+                }
             )
-            return json.dumps({
-                "status": "success",
-                "docx_path": self.docx_path,
-                "exported_svgs_count": len(self.exported_svgs),
-                "svg_files": [os.path.basename(s) for s in self.exported_svgs]
-            })
 
         elif name == "list_skills":
             avail = skills.list_skills()
-            summary = [
-                {"name": s["name"], "scope": s["scope"], "description": s["description"]}
-                for s in avail
-            ]
+            summary = [{"name": s["name"], "scope": s["scope"], "description": s["description"]} for s in avail]
             return json.dumps({"skills_count": len(summary), "skills": summary})
 
         elif name == "use_skill":
@@ -347,13 +306,15 @@ class DocuMorphAgent:
             if sk:
                 if s_name not in self.active_skills_loaded:
                     self.active_skills_loaded.append(s_name)
-                return json.dumps({
-                    "status": "loaded",
-                    "skill_name": sk["name"],
-                    "scope": sk["scope"],
-                    "description": sk["description"],
-                    "instructions": sk["instructions"]
-                })
+                return json.dumps(
+                    {
+                        "status": "loaded",
+                        "skill_name": sk["name"],
+                        "scope": sk["scope"],
+                        "description": sk["description"],
+                        "instructions": sk["instructions"],
+                    }
+                )
             return json.dumps({"error": f"Skill '{s_name}' not found. Call 'list_skills' for available skills."})
 
         elif name == "call_mcp_tool":
@@ -380,8 +341,8 @@ class DocuMorphAgent:
         self,
         user_prompt: str = None,
         max_iterations: int = 10,
-        progress_callback: Optional[Callable[[str, float], None]] = None
-    ) -> Dict[str, Any]:
+        progress_callback: Callable[[str, float], None] | None = None,
+    ) -> dict[str, Any]:
         """
         Run multi-turn agent loop:
         1. Agent sees page images & requirements
@@ -403,7 +364,7 @@ Available tools:
 - `build_docx_output`: build final Word (.docx) document.
 - `list_skills`: list specialized domain skills (math formulas, SVG geometry, page layout, tables, Persian RTL).
 - `use_skill`: read and apply specialized domain guidelines and rules.
-- MCP Server Tools: external tools from connected Model Context Protocol servers ({', '.join([s['name'] for s in mcp_manager.mcp_mgr.get_configured_servers()])}).
+- MCP Server Tools: external tools from connected Model Context Protocol servers ({", ".join([s["name"] for s in mcp_manager.mcp_mgr.get_configured_servers()])}).
 
 MANDATORY SKILL EXECUTION:
 You MUST read relevant skills via `use_skill` before or during document extraction:
@@ -427,16 +388,16 @@ Strict Guidelines:
 10. Use `build_docx_output` to produce final Word docx.
 """
 
-        messages: List[Dict[str, Any]] = [
-            {"role": "system", "content": system_instruction}
-        ]
+        messages: list[dict[str, Any]] = [{"role": "system", "content": system_instruction}]
 
         # Initial prompt includes page 1 image
         first_page_buf = io.BytesIO()
         self.pages[0].save(first_page_buf, format="JPEG", quality=85)
         first_page_b64 = base64.b64encode(first_page_buf.getvalue()).decode()
 
-        prompt_text = user_prompt or """Turn pdf to markdown
+        prompt_text = (
+            user_prompt
+            or """Turn pdf to markdown
 - write formulas in latex
 - made visuals like shapes in svg
 
@@ -447,12 +408,13 @@ Requirements:
 - Write only in pure Markdown without HTML tags (no <br>). XML is only allowed inside SVG blocks.
 - NEVER put the whole exam page or questions inside a table. Extract questions as standard Markdown headings and lists.
 """
-        
+        )
+
         user_content = [
             {"type": "text", "text": prompt_text},
-            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{first_page_b64}"}}
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{first_page_b64}"}},
         ]
-        
+
         # If multipage, also attach remaining pages up front so model has full document vision immediately
         for p_idx in range(1, len(self.pages)):
             p_buf = io.BytesIO()
@@ -469,11 +431,7 @@ Requirements:
                 progress_callback(f"Agent thinking (iteration {iteration + 1})...", pct)
 
             resp = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                tools=self.all_tools,
-                tool_choice="auto",
-                max_tokens=4096
+                model=self.model, messages=messages, tools=self.all_tools, tool_choice="auto", max_tokens=4096
             )
 
             # Accumulate token usage
@@ -490,14 +448,16 @@ Requirements:
             messages.append(msg)
 
             if msg.content:
-                self.steps.append({
-                    "step": len(self.steps) + 1,
-                    "type": "thought",
-                    "title": f"ITERATION {iteration + 1} // AGENT REASONING",
-                    "description": msg.content.strip(),
-                    "status": "info",
-                    "time": time.strftime("%H:%M:%S")
-                })
+                self.steps.append(
+                    {
+                        "step": len(self.steps) + 1,
+                        "type": "thought",
+                        "title": f"ITERATION {iteration + 1} // AGENT REASONING",
+                        "description": msg.content.strip(),
+                        "status": "info",
+                        "time": time.strftime("%H:%M:%S"),
+                    }
+                )
 
             # If no tool calls and finish_reason is stop, agent is done
             if not msg.tool_calls:
@@ -557,7 +517,9 @@ Requirements:
                     step_desc = "Probed available domain skills from local and global directories."
                 elif fn_name == "validate_latex":
                     step_title = "LATEX FORMULAS VALIDATED"
-                    step_desc = f"Validated {len(fn_args.get('formulas', []))} LaTeX expression(s) for Word OMML conversion."
+                    step_desc = (
+                        f"Validated {len(fn_args.get('formulas', []))} LaTeX expression(s) for Word OMML conversion."
+                    )
                 elif fn_name == "validate_svg":
                     step_title = "SVG VECTOR XML VALIDATED"
                     step_desc = "Checked SVG XML markup, viewBox coordinates, and shape tags."
@@ -569,7 +531,7 @@ Requirements:
                     step_desc = f"Saved structured Markdown document ({len(self.markdown)} characters)."
                 elif fn_name == "edit_markdown_snippet":
                     step_title = "MARKDOWN SNIPPET REPLACED"
-                    step_desc = f"Replaced snippet: \"{fn_args.get('search', '')[:60]}\""
+                    step_desc = f'Replaced snippet: "{fn_args.get("search", "")[:60]}"'
                 elif fn_name == "build_docx_output":
                     step_type = "output"
                     step_title = "WORD DOCX COMPILED"
@@ -581,29 +543,31 @@ Requirements:
                 else:
                     step_desc = f"Executed tool {fn_name}"
 
-                self.steps.append({
-                    "step": len(self.steps) + 1,
-                    "type": step_type,
-                    "title": step_title,
-                    "description": step_desc,
-                    "tool": fn_name,
-                    "args": fn_args,
-                    "result": tool_result[:400] if len(tool_result) > 400 else tool_result,
-                    "status": "warning" if "error" in tool_result.lower() else "success",
-                    "time": time.strftime("%H:%M:%S")
-                })
+                self.steps.append(
+                    {
+                        "step": len(self.steps) + 1,
+                        "type": step_type,
+                        "title": step_title,
+                        "description": step_desc,
+                        "tool": fn_name,
+                        "args": fn_args,
+                        "result": tool_result[:400] if len(tool_result) > 400 else tool_result,
+                        "status": "warning" if "error" in tool_result.lower() else "success",
+                        "time": time.strftime("%H:%M:%S"),
+                    }
+                )
 
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "content": tool_result
-                })
+                messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": tool_result})
 
         # Always ensure markdown content exists; fallback if agent produced none
         if not self.markdown:
             # Gather any text content from assistant messages
-            text_parts = [m.content for m in messages if getattr(m, "role", None) == "assistant" and getattr(m, "content", None)]
-            self.markdown = "\n\n".join(text_parts).strip() if text_parts else f"# {self.base_name}\n\nNo text extracted."
+            text_parts = [
+                m.content for m in messages if getattr(m, "role", None) == "assistant" and getattr(m, "content", None)
+            ]
+            self.markdown = (
+                "\n\n".join(text_parts).strip() if text_parts else f"# {self.base_name}\n\nNo text extracted."
+            )
 
         # Compile docx if not already built or file missing
         if not os.path.exists(self.docx_path):
@@ -619,14 +583,16 @@ Requirements:
             f.write(self.markdown)
 
         # Add completion step
-        self.steps.append({
-            "step": len(self.steps) + 1,
-            "type": "output",
-            "title": "CONVERSION PIPELINE COMPLETED",
-            "description": f"Generated final Word document ({os.path.basename(self.docx_path)}) with {len(self.exported_svgs)} extracted SVG shape(s).",
-            "status": "success",
-            "time": time.strftime("%H:%M:%S")
-        })
+        self.steps.append(
+            {
+                "step": len(self.steps) + 1,
+                "type": "output",
+                "title": "CONVERSION PIPELINE COMPLETED",
+                "description": f"Generated final Word document ({os.path.basename(self.docx_path)}) with {len(self.exported_svgs)} extracted SVG shape(s).",
+                "status": "success",
+                "time": time.strftime("%H:%M:%S"),
+            }
+        )
 
         return {
             "success": True,
@@ -644,5 +610,5 @@ Requirements:
             "skills_used": self.active_skills_loaded,
             "steps": self.steps,
             "prompt_tokens": self.prompt_tokens,
-            "completion_tokens": self.completion_tokens
+            "completion_tokens": self.completion_tokens,
         }

@@ -6,12 +6,15 @@ Provides:
 3. Pre-flight context window utilization and cost budgeting.
 """
 
-from typing import Dict, Any, Optional
+from typing import Any
+
 import tiktoken
+
 import db
 
 # Cache encoders in memory
-_ENCODERS: Dict[str, Any] = {}
+_ENCODERS: dict[str, Any] = {}
+
 
 def get_encoder(model_name: str = ""):
     """Retrieve optimal tiktoken encoding for model."""
@@ -24,6 +27,7 @@ def get_encoder(model_name: str = ""):
             _ENCODERS[enc_name] = tiktoken.get_encoding("cl100k_base")
     return _ENCODERS[enc_name]
 
+
 def count_text_tokens(text: str, model_name: str = "") -> int:
     """Count exact tokens for a text string using tiktoken."""
     if not text:
@@ -35,6 +39,7 @@ def count_text_tokens(text: str, model_name: str = "") -> int:
         # Fallback 4 chars per token approximation
         return max(1, len(text) // 4)
 
+
 def estimate_image_tokens(page_count: int = 1, high_res: bool = True) -> int:
     """
     Estimate multimodal tokens for rendered document pages.
@@ -45,12 +50,10 @@ def estimate_image_tokens(page_count: int = 1, high_res: bool = True) -> int:
     per_page = 1200 if high_res else 600
     return page_count * per_page
 
+
 def estimate_preflight_budget(
-    text: str,
-    model_name: str = "",
-    page_count: int = 0,
-    expected_output_tokens: Optional[int] = None
-) -> Dict[str, Any]:
+    text: str, model_name: str = "", page_count: int = 0, expected_output_tokens: int | None = None
+) -> dict[str, Any]:
     """
     Calculate comprehensive pre-flight budget for an upcoming request:
     - Text tokens
@@ -83,5 +86,5 @@ def estimate_preflight_budget(
         "formatted_percent": ctx_info["formatted_percent"],
         "formatted_summary": ctx_info["formatted_summary"],
         "estimated_cost_usd": est_cost,
-        "formatted_cost": db.format_cost(est_cost)
+        "formatted_cost": db.format_cost(est_cost),
     }

@@ -6,22 +6,21 @@ Core processing engine:
 - Runs converter to generate DOCX, extract SVGs, and package ZIP
 """
 
-import os
-import io
-import re
-import json
 import base64
+import io
+import os
 import zipfile
-import shutil
+from collections.abc import Callable
 from pathlib import Path
-from typing import List, Dict, Any, Callable, Optional
+from typing import Any
+
 import dotenv
 import openai
-from PIL import Image
 import pypdfium2 as pdfium
+from PIL import Image
 
-from converter import markdown_to_docx
 import db
+from converter import markdown_to_docx
 
 # Load environment configuration
 dotenv.load_dotenv()
@@ -29,11 +28,13 @@ dotenv.load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent
 ENV_CONFIG = dotenv.dotenv_values(BASE_DIR / ".env")
 
+
 def get_config(key: str, default: str = "") -> str:
     val = db.get_setting(key)
     if val:
         return val
     return os.getenv(key) or ENV_CONFIG.get(key) or default
+
 
 OPENAI_API_BASE_URL = get_config("OPENAI_API_BASE_URL", "http://localhost:20128/v1")
 OPENAI_API_KEY = get_config("OPENAI_API_KEY", "")
@@ -62,19 +63,18 @@ Strict Guidelines:
 10. Persian & Arabic: retain Persian/Arabic question numbering (e.g. ۱-, ۲-) and keep embedded formulas standard LTR LaTeX.
 """
 
+
 def get_ai_client():
     url = db.get_setting("OPENAI_API_BASE_URL") or OPENAI_API_BASE_URL
     key = db.get_setting("OPENAI_API_KEY") or OPENAI_API_KEY or "dummy_key"
-    return openai.OpenAI(
-        base_url=url,
-        api_key=key
-    )
+    return openai.OpenAI(base_url=url, api_key=key)
 
-def extract_images_from_file(file_path: str) -> List[Image.Image]:
+
+def extract_images_from_file(file_path: str) -> list[Image.Image]:
     """Convert input file (PDF or Image) into a list of PIL Images."""
     ext = os.path.splitext(file_path)[1].lower()
     images = []
-    
+
     if ext == ".pdf":
         pdf = pdfium.PdfDocument(file_path)
         for page_idx in range(len(pdf)):
@@ -89,8 +89,9 @@ def extract_images_from_file(file_path: str) -> List[Image.Image]:
         images.append(img)
     else:
         raise ValueError(f"Unsupported file format: {ext}")
-        
+
     return images
+
 
 def pil_to_base64_jpeg(img: Image.Image, quality: int = 85) -> str:
     """Convert PIL image to base64 JPEG string."""
@@ -98,12 +99,13 @@ def pil_to_base64_jpeg(img: Image.Image, quality: int = 85) -> str:
     img.save(buf, format="JPEG", quality=quality)
     return base64.b64encode(buf.getvalue()).decode("utf-8")
 
+
 def process_page_with_ai(img: Image.Image, page_num: int, total_pages: int, model: str = None) -> tuple:
     """Send single page image to AI model to get structured markdown and token usage."""
     client = get_ai_client()
     use_model = model or AI_DEFAULT_MODEL
     b64 = pil_to_base64_jpeg(img)
-    
+
     user_prompt = f"""Turn pdf to markdown (page {page_num} of {total_pages})
 - write formulas in latex
 - made visuals like shapes in svg
@@ -113,7 +115,7 @@ Note:
 - DO NOT write any visual descriptions or explanations at the end.
 - Write ONLY in pure markdown without HTML tags (no <br>). XML is ONLY allowed inside SVG blocks.
 """
-    
+
     resp = client.chat.completions.create(
         model=use_model,
         messages=[
@@ -122,11 +124,11 @@ Note:
                 "role": "user",
                 "content": [
                     {"type": "text", "text": user_prompt},
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
-                ]
-            }
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+                ],
+            },
         ],
-        max_tokens=4096
+        max_tokens=4096,
     )
     content = resp.choices[0].message.content or ""
     usage = getattr(resp, "usage", None)
@@ -138,12 +140,13 @@ Note:
         c_tok = len(content) // 4
     return content, p_tok, c_tok
 
+
 def process_file_to_docx(
     file_path: str,
-    output_dir: Optional[str] = None,
-    progress_callback: Optional[Callable[[str, float], None]] = None,
-    model: Optional[str] = None
-) -> Dict[str, Any]:
+    output_dir: str | None = None,
+    progress_callback: Callable[[str, float], None] | None = None,
+    model: str | None = None,
+) -> dict[str, Any]:
     """
     End-to-end pipeline:
     1. Extract page images
@@ -154,15 +157,15 @@ def process_file_to_docx(
     """
     target_out_dir = output_dir or OUTPUT_DIR
     os.makedirs(target_out_dir, exist_ok=True)
-    
+
     base_name = os.path.splitext(os.path.basename(file_path))[0]
-    
+
     if progress_callback:
         progress_callback("Reading file and rendering pages...", 0.1)
-        
+
     images = extract_images_from_file(file_path)
     total_pages = len(images)
-    
+
     page_markdowns = []
     total_prompt_tokens = 0
     total_completion_tokens = 0
@@ -171,36 +174,36 @@ def process_file_to_docx(
         pct = 0.15 + (0.65 * (idx / total_pages))
         if progress_callback:
             progress_callback(f"Digitizing page {page_num}/{total_pages} with AI...", pct)
-            
+
         md_part, p_tok, c_tok = process_page_with_ai(img, page_num, total_pages, model=model)
         page_markdowns.append(md_part)
         total_prompt_tokens += p_tok
         total_completion_tokens += c_tok
-        
+
     if progress_callback:
         progress_callback("Combining pages and formatting LaTeX equations...", 0.82)
-        
+
     # Combine with page breaks
     combined_md = "\n\n---\n\n".join(page_markdowns)
-    
+
     # Save markdown file
     md_filename = f"{base_name}.md"
     md_path = os.path.join(target_out_dir, md_filename)
     with open(md_path, "w", encoding="utf-8") as f:
         f.write(combined_md)
-        
+
     if progress_callback:
         progress_callback("Extracting SVGs and generating Word (.docx)...", 0.90)
-        
+
     docx_filename = f"{base_name}.docx"
     docx_path = os.path.join(target_out_dir, docx_filename)
-    
+
     # Subfolder for this conversion's SVGs
     svg_subfolder = os.path.join(target_out_dir, f"{base_name}_svgs")
     os.makedirs(svg_subfolder, exist_ok=True)
-    
+
     exported_svgs = markdown_to_docx(combined_md, docx_path, output_dir=svg_subfolder)
-    
+
     # Create ZIP bundle with docx, md, and all svgs
     zip_filename = f"{base_name}_bundle.zip"
     zip_path = os.path.join(target_out_dir, zip_filename)
@@ -209,10 +212,10 @@ def process_file_to_docx(
         z.write(md_path, arcname=md_filename)
         for svg_f in exported_svgs:
             z.write(svg_f, arcname=f"svgs/{os.path.basename(svg_f)}")
-            
+
     if progress_callback:
         progress_callback("Completed!", 1.0)
-        
+
     return {
         "success": True,
         "base_name": base_name,
@@ -227,5 +230,5 @@ def process_file_to_docx(
         "svg_paths": exported_svgs,
         "markdown_content": combined_md,
         "prompt_tokens": total_prompt_tokens,
-        "completion_tokens": total_completion_tokens
+        "completion_tokens": total_completion_tokens,
     }

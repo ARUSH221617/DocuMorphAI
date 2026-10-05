@@ -6,32 +6,33 @@ DocuMorph AI Application
 - Reads configuration and secrets from .env
 """
 
-import os
-import sys
-import webbrowser
-import threading
 import argparse
-import zipfile
 import asyncio
-import uuid
-import time
-import shutil
 import concurrent.futures
+import os
+import shutil
+import sys
+import threading
+import time
+import uuid
+import webbrowser
+import zipfile
 from pathlib import Path
-from typing import Optional, Dict, Any, List
-import uvicorn
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
-from sse_starlette.sse import EventSourceResponse
-from pydantic import BaseModel
+from typing import Any
 
-import engine
+import uvicorn
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
+from sse_starlette.sse import EventSourceResponse
+
 import agent
 import converter
 import db
-import skills
+import engine
 import mcp_manager
+import skills
 import tokenizer
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -43,22 +44,24 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 # Background Task Registry & Parallel Job Queue
 # taskId -> { status, percent, message, events: [], result, error }
-TASKS: Dict[str, Dict[str, Any]] = {}
-TASK_LISTENERS: Dict[str, List[asyncio.Queue]] = {}
+TASKS: dict[str, dict[str, Any]] = {}
+TASK_LISTENERS: dict[str, list[asyncio.Queue]] = {}
 
-MAIN_EVENT_LOOP: Optional[asyncio.AbstractEventLoop] = None
-EXECUTOR: Optional[concurrent.futures.ThreadPoolExecutor] = None
-ACTIVE_FUTURES: Dict[str, concurrent.futures.Future] = {}
+MAIN_EVENT_LOOP: asyncio.AbstractEventLoop | None = None
+EXECUTOR: concurrent.futures.ThreadPoolExecutor | None = None
+ACTIVE_FUTURES: dict[str, concurrent.futures.Future] = {}
 QUEUE_LOCK = threading.Lock()
-DISPATCHER_THREAD: Optional[threading.Thread] = None
+DISPATCHER_THREAD: threading.Thread | None = None
 STOP_DISPATCHER = False
 
-def get_or_create_listeners(task_id: str) -> List[asyncio.Queue]:
+
+def get_or_create_listeners(task_id: str) -> list[asyncio.Queue]:
     if task_id not in TASK_LISTENERS:
         TASK_LISTENERS[task_id] = []
     return TASK_LISTENERS[task_id]
 
-def broadcast_task_event(task_id: str, event_data: dict, loop: Optional[asyncio.AbstractEventLoop] = None):
+
+def broadcast_task_event(task_id: str, event_data: dict, loop: asyncio.AbstractEventLoop | None = None):
     task = TASKS.get(task_id)
     if not task:
         db_job = db.get_job(task_id)
@@ -70,7 +73,7 @@ def broadcast_task_event(task_id: str, event_data: dict, loop: Optional[asyncio.
                 "message": db_job.get("message", ""),
                 "events": [],
                 "result": db_job.get("result"),
-                "error": db_job.get("error")
+                "error": db_job.get("error"),
             }
             task = TASKS[task_id]
 
@@ -85,7 +88,14 @@ def broadcast_task_event(task_id: str, event_data: dict, loop: Optional[asyncio.
             task["percent"] = 100
             task["message"] = "Completed!"
             task["result"] = event_data.get("result")
-            db.update_job(task_id, status="done", percent=100, message="Completed!", result=event_data.get("result"), finished_at=time.time())
+            db.update_job(
+                task_id,
+                status="done",
+                percent=100,
+                message="Completed!",
+                result=event_data.get("result"),
+                finished_at=time.time(),
+            )
         elif event_data.get("type") == "error":
             task["status"] = "error"
             task["error"] = event_data.get("message", "Error")
@@ -99,9 +109,11 @@ def broadcast_task_event(task_id: str, event_data: dict, loop: Optional[asyncio.
         else:
             q.put_nowait(event_data)
 
+
 def execute_conversion_job(task_id: str, file_path: str, filename: str, mode: str, model: str):
     """Worker task executed inside ThreadPoolExecutor."""
     start_time = time.time()
+
     def progress_cb(message: str, pct: float):
         elapsed = round(time.time() - start_time, 1)
         event = {
@@ -109,7 +121,7 @@ def execute_conversion_job(task_id: str, file_path: str, filename: str, mode: st
             "message": message,
             "percent": int(pct * 100),
             "elapsed_sec": elapsed,
-            "formatted_time": db.format_duration(elapsed)
+            "formatted_time": db.format_duration(elapsed),
         }
         broadcast_task_event(task_id, event)
 
@@ -120,15 +132,13 @@ def execute_conversion_job(task_id: str, file_path: str, filename: str, mode: st
         chosen_model = model or db.get_setting("AI_DEFAULT_MODEL", engine.AI_DEFAULT_MODEL)
 
         if mode == "agent":
-            doc_agent = agent.DocuMorphAgent(
-                str(file_path),
-                model=chosen_model,
-                output_dir=str(out_dir)
-            )
+            doc_agent = agent.DocuMorphAgent(str(file_path), model=chosen_model, output_dir=str(out_dir))
             res = doc_agent.run_agent_workflow(progress_callback=progress_cb)
 
             if not os.path.exists(res["docx_path"]):
-                converter.markdown_to_docx(res.get("markdown_content", ""), res["docx_path"], output_dir=doc_agent.svgs_dir)
+                converter.markdown_to_docx(
+                    res.get("markdown_content", ""), res["docx_path"], output_dir=doc_agent.svgs_dir
+                )
 
             zip_filename = f"{res['base_name']}_bundle.zip"
             zip_path = os.path.join(str(out_dir), zip_filename)
@@ -144,10 +154,7 @@ def execute_conversion_job(task_id: str, file_path: str, filename: str, mode: st
             res["zip_name"] = zip_filename
         else:
             res = engine.process_file_to_docx(
-                str(file_path),
-                output_dir=str(out_dir),
-                progress_callback=progress_cb,
-                model=chosen_model
+                str(file_path), output_dir=str(out_dir), progress_callback=progress_cb, model=chosen_model
             )
 
         finish_time = time.time()
@@ -173,11 +180,8 @@ def execute_conversion_job(task_id: str, file_path: str, filename: str, mode: st
         svg_data = []
         for svg_p in res.get("svg_paths", []):
             try:
-                with open(svg_p, "r", encoding="utf-8") as sf:
-                    svg_data.append({
-                        "name": os.path.basename(svg_p),
-                        "content": sf.read()
-                    })
+                with open(svg_p, encoding="utf-8") as sf:
+                    svg_data.append({"name": os.path.basename(svg_p), "content": sf.read()})
             except Exception:
                 pass
         res["svg_data"] = svg_data
@@ -186,7 +190,7 @@ def execute_conversion_job(task_id: str, file_path: str, filename: str, mode: st
         db.add_chat_message(
             res["base_name"],
             "assistant",
-            f"Extracted document '{filename}' in {res['formatted_duration']} (est. {res['formatted_cost']}, {res.get('total_pages', 1)} pages, {len(svg_data)} SVGs)."
+            f"Extracted document '{filename}' in {res['formatted_duration']} (est. {res['formatted_cost']}, {res.get('total_pages', 1)} pages, {len(svg_data)} SVGs).",
         )
 
         db.update_job(
@@ -199,31 +203,38 @@ def execute_conversion_job(task_id: str, file_path: str, filename: str, mode: st
             duration_sec=duration_sec,
             cost_usd=cost_usd,
             prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens
+            completion_tokens=completion_tokens,
         )
 
-        broadcast_task_event(task_id, {
-            "type": "done",
-            "result": res,
-            "duration_sec": duration_sec,
-            "formatted_duration": res["formatted_duration"],
-            "cost_usd": cost_usd,
-            "formatted_cost": res["formatted_cost"],
-            "total_tokens": total_tokens,
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "context_usage": ctx_usage
-        })
+        broadcast_task_event(
+            task_id,
+            {
+                "type": "done",
+                "result": res,
+                "duration_sec": duration_sec,
+                "formatted_duration": res["formatted_duration"],
+                "cost_usd": cost_usd,
+                "formatted_cost": res["formatted_cost"],
+                "total_tokens": total_tokens,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "context_usage": ctx_usage,
+            },
+        )
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         finish_time = time.time()
         duration_sec = round(finish_time - start_time, 2)
-        db.update_job(task_id, status="error", message=str(e), error=str(e), finished_at=finish_time, duration_sec=duration_sec)
+        db.update_job(
+            task_id, status="error", message=str(e), error=str(e), finished_at=finish_time, duration_sec=duration_sec
+        )
         broadcast_task_event(task_id, {"type": "error", "message": str(e), "duration_sec": duration_sec})
     finally:
         with QUEUE_LOCK:
             ACTIVE_FUTURES.pop(task_id, None)
+
 
 def queue_dispatcher_loop():
     """Background dispatcher pulling queued jobs and running them up to MAX_CONCURRENT_JOBS in parallel."""
@@ -248,19 +259,27 @@ def queue_dispatcher_loop():
                     model = next_job["model"]
 
                     with QUEUE_LOCK:
-                        db.update_job(job_id, status="processing", message="Worker assigned. Processing...", started_at=time.time())
+                        db.update_job(
+                            job_id,
+                            status="processing",
+                            message="Worker assigned. Processing...",
+                            started_at=time.time(),
+                        )
                         if job_id in TASKS:
                             TASKS[job_id]["status"] = "processing"
                             TASKS[job_id]["message"] = "Worker assigned. Processing..."
-                        broadcast_task_event(job_id, {"type": "progress", "message": "Worker assigned. Processing...", "percent": 5})
+                        broadcast_task_event(
+                            job_id, {"type": "progress", "message": "Worker assigned. Processing...", "percent": 5}
+                        )
 
                         future = EXECUTOR.submit(execute_conversion_job, job_id, file_path, filename, mode, model)
                         ACTIVE_FUTURES[job_id] = future
                     continue
 
             time.sleep(0.4)
-        except Exception as e:
+        except Exception:
             time.sleep(1.0)
+
 
 @app.on_event("startup")
 async def on_startup():
@@ -270,32 +289,31 @@ async def on_startup():
         DISPATCHER_THREAD = threading.Thread(target=queue_dispatcher_loop, daemon=True)
         DISPATCHER_THREAD.start()
 
+
 class TokenEstimateRequest(BaseModel):
-    text: Optional[str] = ""
-    model: Optional[str] = None
-    page_count: Optional[int] = 0
-    expected_output_tokens: Optional[int] = None
+    text: str | None = ""
+    model: str | None = None
+    page_count: int | None = 0
+    expected_output_tokens: int | None = None
+
 
 class AgentEditRequest(BaseModel):
     base_name: str
     prompt: str
     markdown: str
-    model: Optional[str] = None
+    model: str | None = None
+
 
 class RecompileRequest(BaseModel):
     base_name: str
     markdown: str
 
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     current_model = db.get_setting("AI_DEFAULT_MODEL", engine.AI_DEFAULT_MODEL)
-    return templates.TemplateResponse(
-        "index.html",
-        {
-            "request": request,
-            "default_model": current_model
-        }
-    )
+    return templates.TemplateResponse("index.html", {"request": request, "default_model": current_model})
+
 
 @app.get("/api/models")
 async def get_models():
@@ -317,22 +335,19 @@ async def get_models():
                 # Extract context length from API response
                 m_dump = m.model_dump() if hasattr(m, "model_dump") else getattr(m, "__dict__", {})
                 caps = m_dump.get("capabilities") or {}
-                ctx = (
-                    m_dump.get("context_length")
-                    or caps.get("contextWindow")
-                    or m_dump.get("max_model_len")
-                    or 0
-                )
+                ctx = m_dump.get("context_length") or caps.get("contextWindow") or m_dump.get("max_model_len") or 0
                 max_out = caps.get("maxOutput") or m_dump.get("max_completion_tokens") or None
 
                 if ctx and int(ctx) > 0:
                     db.cache_model_metadata(mid, int(ctx), int(max_out) if max_out else None)
 
-                detailed_models.append({
-                    "id": mid,
-                    "context_window": int(ctx) if ctx else db.get_model_context_window(mid),
-                    "max_output": max_out
-                })
+                detailed_models.append(
+                    {
+                        "id": mid,
+                        "context_window": int(ctx) if ctx else db.get_model_context_window(mid),
+                        "max_output": max_out,
+                    }
+                )
 
         # Deduplicate preserving order
         seen = set()
@@ -355,7 +370,7 @@ async def get_models():
             "models_map": models_map,
             "current_model": current_default,
             "count": len(model_list),
-            "source": "api"
+            "source": "api",
         }
     except Exception as e:
         fallback = [current_default]
@@ -368,15 +383,16 @@ async def get_models():
             "current_model": current_default,
             "count": len(unique_fallback),
             "source": "fallback",
-            "error": str(e)
+            "error": str(e),
         }
+
 
 @app.post("/api/convert")
 async def api_convert(
-    files: Optional[List[UploadFile]] = File(None),
-    file: Optional[UploadFile] = File(None),
+    files: list[UploadFile] | None = File(None),
+    file: UploadFile | None = File(None),
     model: str = Form(None),
-    mode: str = Form("agent")
+    mode: str = Form("agent"),
 ):
     """Enqueue one or multiple files into the background job queue for parallel conversion."""
     upload_list = []
@@ -413,21 +429,20 @@ async def api_convert(
             "events": [],
             "result": None,
             "error": None,
-            "created_at": time.time()
+            "created_at": time.time(),
         }
 
-        enqueued_tasks.append({
-            "task_id": task_id,
-            "filename": f.filename,
-            "status": "queued"
-        })
+        enqueued_tasks.append({"task_id": task_id, "filename": f.filename, "status": "queued"})
 
-    return JSONResponse(content={
-        "success": True,
-        "tasks": enqueued_tasks,
-        "count": len(enqueued_tasks),
-        "task_id": enqueued_tasks[0]["task_id"]
-    })
+    return JSONResponse(
+        content={
+            "success": True,
+            "tasks": enqueued_tasks,
+            "count": len(enqueued_tasks),
+            "task_id": enqueued_tasks[0]["task_id"],
+        }
+    )
+
 
 @app.get("/api/task/{task_id}/status")
 async def get_task_status(task_id: str):
@@ -443,16 +458,19 @@ async def get_task_status(task_id: str):
             "percent": db_job.get("percent", 0),
             "message": db_job.get("message", ""),
             "result": db_job.get("result"),
-            "error": db_job.get("error")
+            "error": db_job.get("error"),
         }
-    return JSONResponse(content={
-        "id": task["id"],
-        "status": task["status"],
-        "percent": task.get("percent", 0),
-        "message": task.get("message", ""),
-        "result": task.get("result"),
-        "error": task.get("error")
-    })
+    return JSONResponse(
+        content={
+            "id": task["id"],
+            "status": task["status"],
+            "percent": task.get("percent", 0),
+            "message": task.get("message", ""),
+            "result": task.get("result"),
+            "error": task.get("error"),
+        }
+    )
+
 
 @app.get("/api/queue")
 async def get_queue_status():
@@ -476,38 +494,43 @@ async def get_queue_status():
         t_tok = j.get("total_tokens") or (p_tok + c_tok)
         ctx_info = db.calculate_context_usage(j.get("model", ""), p_tok, c_tok)
 
-        job_items.append({
-            "id": j["id"],
-            "filename": j["filename"],
-            "status": j["status"],
-            "percent": j["percent"],
-            "message": j["message"],
-            "mode": j["mode"],
-            "model": j.get("model", ""),
-            "duration_sec": duration,
-            "formatted_duration": db.format_duration(duration),
-            "cost_usd": cost,
-            "formatted_cost": db.format_cost(cost),
-            "prompt_tokens": p_tok,
-            "completion_tokens": c_tok,
-            "total_tokens": t_tok,
-            "context_limit": ctx_info["context_limit"],
-            "context_percent": ctx_info["context_percent"],
-            "formatted_tokens": ctx_info["formatted_tokens"],
-            "formatted_context": ctx_info["formatted_summary"],
-            "created_at": j["created_at"],
-            "formatted_time": time.strftime("%H:%M:%S", time.localtime(j["created_at"]))
-        })
+        job_items.append(
+            {
+                "id": j["id"],
+                "filename": j["filename"],
+                "status": j["status"],
+                "percent": j["percent"],
+                "message": j["message"],
+                "mode": j["mode"],
+                "model": j.get("model", ""),
+                "duration_sec": duration,
+                "formatted_duration": db.format_duration(duration),
+                "cost_usd": cost,
+                "formatted_cost": db.format_cost(cost),
+                "prompt_tokens": p_tok,
+                "completion_tokens": c_tok,
+                "total_tokens": t_tok,
+                "context_limit": ctx_info["context_limit"],
+                "context_percent": ctx_info["context_percent"],
+                "formatted_tokens": ctx_info["formatted_tokens"],
+                "formatted_context": ctx_info["formatted_summary"],
+                "created_at": j["created_at"],
+                "formatted_time": time.strftime("%H:%M:%S", time.localtime(j["created_at"])),
+            }
+        )
 
     token_agg = db.get_total_tokens_consumed()
-    return JSONResponse(content={
-        "active_workers": active_count,
-        "max_concurrent": max_workers,
-        "total_jobs": len(jobs),
-        "total_tokens_consumed": token_agg["total_tokens"],
-        "formatted_total_tokens": f"{token_agg['total_tokens']:,}",
-        "jobs": job_items
-    })
+    return JSONResponse(
+        content={
+            "active_workers": active_count,
+            "max_concurrent": max_workers,
+            "total_jobs": len(jobs),
+            "total_tokens_consumed": token_agg["total_tokens"],
+            "formatted_total_tokens": f"{token_agg['total_tokens']:,}",
+            "jobs": job_items,
+        }
+    )
+
 
 @app.get("/api/task/{task_id}/events")
 async def stream_task_events(task_id: str):
@@ -529,6 +552,7 @@ async def stream_task_events(task_id: str):
             while True:
                 item = await q.get()
                 import json
+
                 yield {"data": json.dumps(item)}
                 if item.get("type") in ("done", "error"):
                     break
@@ -537,6 +561,7 @@ async def stream_task_events(task_id: str):
                 listeners.remove(q)
 
     return EventSourceResponse(event_generator())
+
 
 @app.post("/api/agent-edit")
 async def api_agent_edit(req: AgentEditRequest):
@@ -555,7 +580,9 @@ async def api_agent_edit(req: AgentEditRequest):
             if sk["name"] in req.prompt:
                 full_sk = skills.get_skill(sk["name"])
                 if full_sk:
-                    skill_guidance += f"\n\n--- APPLIED SKILL GUIDELINES: {full_sk['name']} ---\n{full_sk['instructions']}\n"
+                    skill_guidance += (
+                        f"\n\n--- APPLIED SKILL GUIDELINES: {full_sk['name']} ---\n{full_sk['instructions']}\n"
+                    )
 
         system_prompt = f"""You are an expert document editor.
 The user wants you to edit their structured markdown document according to their instructions.
@@ -571,9 +598,9 @@ Follow strict document formatting:
             model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Instruction: {req.prompt}\n\nCurrent Markdown:\n{req.markdown}"}
+                {"role": "user", "content": f"Instruction: {req.prompt}\n\nCurrent Markdown:\n{req.markdown}"},
             ],
-            max_tokens=4096
+            max_tokens=4096,
         )
         duration_sec = round(time.time() - start_time, 2)
         new_md = resp.choices[0].message.content or req.markdown
@@ -602,7 +629,7 @@ Follow strict document formatting:
             db.add_chat_message(
                 req.base_name,
                 "assistant",
-                f"Applied edits in {db.format_duration(duration_sec)} ({db.format_cost(cost_usd)}): \"{req.prompt}\""
+                f'Applied edits in {db.format_duration(duration_sec)} ({db.format_cost(cost_usd)}): "{req.prompt}"',
             )
 
         edit_steps = [
@@ -610,9 +637,9 @@ Follow strict document formatting:
                 "step": 1,
                 "type": "thought",
                 "title": "USER REFINEMENT INSTRUCTION RECEIVED",
-                "description": f"Prompt: \"{req.prompt}\"",
+                "description": f'Prompt: "{req.prompt}"',
                 "status": "info",
-                "time": time.strftime("%H:%M:%S")
+                "time": time.strftime("%H:%M:%S"),
             },
             {
                 "step": 2,
@@ -620,7 +647,7 @@ Follow strict document formatting:
                 "title": "AGENT REASONING & DIFF SYNTHESIS",
                 "description": f"Applied model '{model}' in {db.format_duration(duration_sec)} ({db.format_cost(cost_usd)}). Output size: {len(new_md)} chars.",
                 "status": "success",
-                "time": time.strftime("%H:%M:%S")
+                "time": time.strftime("%H:%M:%S"),
             },
             {
                 "step": 3,
@@ -628,34 +655,35 @@ Follow strict document formatting:
                 "title": "DOCUMENT COMMITTED",
                 "description": f"Updated markdown content on disk for '{req.base_name or 'document'}'.",
                 "status": "success",
-                "time": time.strftime("%H:%M:%S")
-            }
+                "time": time.strftime("%H:%M:%S"),
+            },
         ]
 
-        return JSONResponse(content={
-            "markdown": new_md,
-            "duration_sec": duration_sec,
-            "formatted_duration": db.format_duration(duration_sec),
-            "cost_usd": cost_usd,
-            "formatted_cost": db.format_cost(cost_usd),
-            "prompt_tokens": p_tok,
-            "completion_tokens": c_tok,
-            "total_tokens": t_tok,
-            "context_usage": ctx_usage,
-            "formatted_context_usage": ctx_usage["formatted_summary"],
-            "chat": db.get_chat_history(req.base_name) if req.base_name else [],
-            "steps": edit_steps
-        })
+        return JSONResponse(
+            content={
+                "markdown": new_md,
+                "duration_sec": duration_sec,
+                "formatted_duration": db.format_duration(duration_sec),
+                "cost_usd": cost_usd,
+                "formatted_cost": db.format_cost(cost_usd),
+                "prompt_tokens": p_tok,
+                "completion_tokens": c_tok,
+                "total_tokens": t_tok,
+                "context_usage": ctx_usage,
+                "formatted_context_usage": ctx_usage["formatted_summary"],
+                "chat": db.get_chat_history(req.base_name) if req.base_name else [],
+                "steps": edit_steps,
+            }
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/api/chat/{base_name}")
 async def api_get_chat(base_name: str):
     """Retrieve chat conversation history for a specific document."""
-    return JSONResponse(content={
-        "base_name": base_name,
-        "messages": db.get_chat_history(base_name)
-    })
+    return JSONResponse(content={"base_name": base_name, "messages": db.get_chat_history(base_name)})
+
 
 @app.post("/api/recompile")
 async def api_recompile(req: RecompileRequest):
@@ -682,53 +710,58 @@ async def api_recompile(req: RecompileRequest):
 
         svg_data = []
         for svg_p in exported_svgs:
-            with open(svg_p, "r", encoding="utf-8") as sf:
+            with open(svg_p, encoding="utf-8") as sf:
                 svg_data.append({"name": os.path.basename(svg_p), "content": sf.read()})
 
-        return JSONResponse(content={
-            "success": True,
-            "base_name": base,
-            "docx_path": docx_path,
-            "docx_name": f"{base}.docx",
-            "md_path": md_path,
-            "md_name": f"{base}.md",
-            "zip_path": zip_path,
-            "zip_name": zip_filename,
-            "svgs": [os.path.basename(s) for s in exported_svgs],
-            "svg_data": svg_data,
-            "markdown_content": req.markdown
-        })
+        return JSONResponse(
+            content={
+                "success": True,
+                "base_name": base,
+                "docx_path": docx_path,
+                "docx_name": f"{base}.docx",
+                "md_path": md_path,
+                "md_name": f"{base}.md",
+                "zip_path": zip_path,
+                "zip_name": zip_filename,
+                "svgs": [os.path.basename(s) for s in exported_svgs],
+                "svg_data": svg_data,
+                "markdown_content": req.markdown,
+            }
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 class ValidateLatexRequest(BaseModel):
     latex: str
 
+
 class ValidateSvgRequest(BaseModel):
     svg: str
+
 
 class SkillCreateRequest(BaseModel):
     name: str
     description: str
     instructions: str
 
+
 class MCPServerRequest(BaseModel):
     id: str
     name: str
     type: str = "stdio"
-    command: Optional[str] = None
-    args: Optional[List[str]] = None
-    env: Optional[Dict[str, str]] = None
-    url: Optional[str] = None
+    command: str | None = None
+    args: list[str] | None = None
+    env: dict[str, str] | None = None
+    url: str | None = None
     enabled: int = 1
+
 
 class MCPToolCallRequest(BaseModel):
     server_id: str
     tool_name: str
-    arguments: Optional[Dict[str, Any]] = None
+    arguments: dict[str, Any] | None = None
 
-class ValidateSvgRequest(BaseModel):
-    svg: str
 
 @app.get("/api/history")
 async def get_history():
@@ -792,30 +825,32 @@ async def get_history():
         m_name = (job_meta.get("model") or "") if job_meta else ""
         ctx_info = db.calculate_context_usage(m_name, p_tokens, c_tokens)
 
-        documents.append({
-            "base_name": base,
-            "display_title": display_title,
-            "has_docx": docx_f.exists(),
-            "has_md": md_f.exists(),
-            "has_zip": zip_f.exists(),
-            "docx_name": f"{base}.docx" if docx_f.exists() else None,
-            "md_name": f"{base}.md" if md_f.exists() else None,
-            "zip_name": f"{base}_bundle.zip" if zip_f.exists() else None,
-            "svg_count": svg_count,
-            "size": doc_size,
-            "duration_sec": duration_sec,
-            "formatted_duration": db.format_duration(duration_sec),
-            "cost_usd": cost_usd,
-            "formatted_cost": db.format_cost(cost_usd),
-            "prompt_tokens": p_tokens,
-            "completion_tokens": c_tokens,
-            "total_tokens": t_tokens,
-            "context_limit": ctx_info["context_limit"],
-            "context_percent": ctx_info["context_percent"],
-            "formatted_context_usage": ctx_info["formatted_summary"],
-            "mtime": mtime,
-            "formatted_time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(mtime)) if mtime else "N/A"
-        })
+        documents.append(
+            {
+                "base_name": base,
+                "display_title": display_title,
+                "has_docx": docx_f.exists(),
+                "has_md": md_f.exists(),
+                "has_zip": zip_f.exists(),
+                "docx_name": f"{base}.docx" if docx_f.exists() else None,
+                "md_name": f"{base}.md" if md_f.exists() else None,
+                "zip_name": f"{base}_bundle.zip" if zip_f.exists() else None,
+                "svg_count": svg_count,
+                "size": doc_size,
+                "duration_sec": duration_sec,
+                "formatted_duration": db.format_duration(duration_sec),
+                "cost_usd": cost_usd,
+                "formatted_cost": db.format_cost(cost_usd),
+                "prompt_tokens": p_tokens,
+                "completion_tokens": c_tokens,
+                "total_tokens": t_tokens,
+                "context_limit": ctx_info["context_limit"],
+                "context_percent": ctx_info["context_percent"],
+                "formatted_context_usage": ctx_info["formatted_summary"],
+                "mtime": mtime,
+                "formatted_time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(mtime)) if mtime else "N/A",
+            }
+        )
 
     documents.sort(key=lambda d: d["mtime"], reverse=True)
     total_cost = sum(d.get("cost_usd", 0.0) for d in documents)
@@ -834,8 +869,9 @@ async def get_history():
         "formatted_total_tokens": f"{token_agg['total_tokens']:,}",
         "prompt_tokens": token_agg["prompt_tokens"],
         "completion_tokens": token_agg["completion_tokens"],
-        "output_path": str(OUTPUT_DIR)
+        "output_path": str(OUTPUT_DIR),
     }
+
 
 @app.get("/api/history/{base_name}")
 async def get_history_document(base_name: str):
@@ -850,14 +886,14 @@ async def get_history_document(base_name: str):
 
     md_content = ""
     if md_file.exists():
-        with open(md_file, "r", encoding="utf-8") as f:
+        with open(md_file, encoding="utf-8") as f:
             md_content = f.read()
 
     svg_data = []
     svgs = []
     if svgs_dir.is_dir():
         for sf in sorted(svgs_dir.glob("*.svg")):
-            with open(sf, "r", encoding="utf-8") as sfp:
+            with open(sf, encoding="utf-8") as sfp:
                 svg_data.append({"name": sf.name, "content": sfp.read()})
                 svgs.append(sf.name)
 
@@ -875,8 +911,22 @@ async def get_history_document(base_name: str):
         steps = job_meta["result"].get("steps", [])
     if not steps:
         steps = [
-            {"step": 1, "type": "init", "title": "DOCUMENT ARCHIVE LOADED", "description": f"Loaded '{base_name}' from library storage.", "status": "success", "time": "Archived"},
-            {"step": 2, "type": "output", "title": "COMPILATION RECOVERED", "description": f"Word document, {len(svgs)} SVG shape(s), and Markdown recovered.", "status": "success", "time": "Ready"}
+            {
+                "step": 1,
+                "type": "init",
+                "title": "DOCUMENT ARCHIVE LOADED",
+                "description": f"Loaded '{base_name}' from library storage.",
+                "status": "success",
+                "time": "Archived",
+            },
+            {
+                "step": 2,
+                "type": "output",
+                "title": "COMPILATION RECOVERED",
+                "description": f"Word document, {len(svgs)} SVG shape(s), and Markdown recovered.",
+                "status": "success",
+                "time": "Ready",
+            },
         ]
 
     return {
@@ -903,8 +953,9 @@ async def get_history_document(base_name: str):
         "formatted_context_usage": ctx_info["formatted_summary"],
         "context_usage": ctx_info,
         "total_pages": 1,
-        "steps": steps
+        "steps": steps,
     }
+
 
 @app.delete("/api/history/{base_name}")
 async def delete_history_document(base_name: str):
@@ -923,6 +974,7 @@ async def delete_history_document(base_name: str):
 
     return {"success": True, "base_name": base_name, "deleted": deleted_files}
 
+
 @app.post("/api/tools/estimate-tokens")
 async def api_estimate_tokens(req: TokenEstimateRequest):
     """Accurately estimate tokens and pre-flight budget using tiktoken and API-loaded context window."""
@@ -931,9 +983,10 @@ async def api_estimate_tokens(req: TokenEstimateRequest):
         text=req.text or "",
         model_name=chosen_model,
         page_count=req.page_count or 0,
-        expected_output_tokens=req.expected_output_tokens
+        expected_output_tokens=req.expected_output_tokens,
     )
     return budget
+
 
 @app.post("/api/tools/validate-latex")
 async def api_validate_latex(req: ValidateLatexRequest):
@@ -947,10 +1000,12 @@ async def api_validate_latex(req: ValidateLatexRequest):
     except Exception as e:
         return {"valid": False, "tag": None, "error": str(e)}
 
+
 @app.post("/api/tools/validate-svg")
 async def api_validate_svg(req: ValidateSvgRequest):
     """Validate SVG XML string for Word shape compatibility."""
     import xml.etree.ElementTree as ET
+
     try:
         cleaned = req.svg.strip()
         root = ET.fromstring(cleaned)
@@ -965,18 +1020,21 @@ async def api_validate_svg(req: ValidateSvgRequest):
             "width": width,
             "height": height,
             "elements_count": elem_count,
-            "error": None
+            "error": None,
         }
     except Exception as e:
         return {"valid": False, "error": str(e)}
 
+
 # --- SKILLS ENDPOINTS ---
+
 
 @app.get("/api/skills")
 async def get_skills_list():
     """List all available skills (built-in local and user global)."""
     items = skills.list_skills()
     return {"skills": items, "count": len(items)}
+
 
 @app.get("/api/skills/{name}")
 async def get_skill_detail(name: str):
@@ -985,6 +1043,7 @@ async def get_skill_detail(name: str):
     if not sk:
         raise HTTPException(status_code=404, detail="Skill not found")
     return sk
+
 
 @app.post("/api/skills")
 async def save_skill(req: SkillCreateRequest):
@@ -995,6 +1054,7 @@ async def save_skill(req: SkillCreateRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+
 @app.delete("/api/skills/{name}")
 async def delete_skill(name: str):
     """Delete a local project skill."""
@@ -1003,7 +1063,9 @@ async def delete_skill(name: str):
         raise HTTPException(status_code=400, detail="Cannot delete skill (only local skills can be removed).")
     return {"success": True, "name": name}
 
+
 # --- MCP ENDPOINTS ---
+
 
 @app.get("/api/mcp/servers")
 async def get_mcp_servers():
@@ -1020,13 +1082,9 @@ async def get_mcp_servers():
                 status = "connected"
             except Exception as e:
                 status = f"error: {str(e)[:100]}"
-        detailed.append({
-            **s,
-            "tools": tools,
-            "tools_count": len(tools),
-            "status": status
-        })
+        detailed.append({**s, "tools": tools, "tools_count": len(tools), "status": status})
     return {"servers": detailed, "count": len(detailed)}
+
 
 @app.post("/api/mcp/servers")
 async def save_mcp_server(req: MCPServerRequest):
@@ -1040,17 +1098,19 @@ async def save_mcp_server(req: MCPServerRequest):
             args=req.args or [],
             env=req.env or {},
             url=req.url,
-            enabled=req.enabled
+            enabled=req.enabled,
         )
         return {"success": True, "id": req.id}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
 
 @app.delete("/api/mcp/servers/{server_id}")
 async def delete_mcp_server(server_id: str):
     """Delete an MCP server from SQLite."""
     db.delete_mcp_server(server_id)
     return {"success": True, "id": server_id}
+
 
 @app.post("/api/mcp/servers/{server_id}/test")
 async def test_mcp_server(server_id: str):
@@ -1065,6 +1125,7 @@ async def test_mcp_server(server_id: str):
     except Exception as e:
         return {"success": False, "status": "error", "error": str(e), "tools": []}
 
+
 @app.post("/api/mcp/tools/call")
 async def call_mcp_tool_api(req: MCPToolCallRequest):
     """Manually invoke an MCP tool from sandbox or agent."""
@@ -1074,12 +1135,14 @@ async def call_mcp_tool_api(req: MCPToolCallRequest):
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+
 class SettingsUpdateRequest(BaseModel):
-    OPENAI_API_BASE_URL: Optional[str] = None
-    OPENAI_API_KEY: Optional[str] = None
-    AI_DEFAULT_MODEL: Optional[str] = None
-    OUTPUT_PATH: Optional[str] = None
-    MAX_CONCURRENT_JOBS: Optional[str] = None
+    OPENAI_API_BASE_URL: str | None = None
+    OPENAI_API_KEY: str | None = None
+    AI_DEFAULT_MODEL: str | None = None
+    OUTPUT_PATH: str | None = None
+    MAX_CONCURRENT_JOBS: str | None = None
+
 
 @app.get("/api/settings")
 async def get_settings():
@@ -1097,8 +1160,9 @@ async def get_settings():
         "max_concurrent_jobs": settings.get("MAX_CONCURRENT_JOBS", "3"),
         "python_version": sys.version.split()[0],
         "platform": sys.platform,
-        "system_status": "READY"
+        "system_status": "READY",
     }
+
 
 @app.post("/api/settings")
 async def save_settings(req: SettingsUpdateRequest):
@@ -1119,6 +1183,7 @@ async def save_settings(req: SettingsUpdateRequest):
         engine.OUTPUT_DIR = req.OUTPUT_PATH
 
     return JSONResponse(content={"success": True, "message": "Settings saved to SQLite successfully."})
+
 
 @app.post("/api/settings/clear-cache")
 async def clear_cache():
@@ -1162,44 +1227,47 @@ async def clear_cache():
         TASKS.clear()
         ACTIVE_FUTURES.clear()
 
-    return JSONResponse(content={
-        "success": True,
-        "deleted_inputs": deleted_inputs,
-        "deleted_outputs": deleted_outputs,
-        "message": f"Successfully removed {deleted_inputs} input files, {deleted_outputs} output files, and cleaned SQLite tables."
-    })
+    return JSONResponse(
+        content={
+            "success": True,
+            "deleted_inputs": deleted_inputs,
+            "deleted_outputs": deleted_outputs,
+            "message": f"Successfully removed {deleted_inputs} input files, {deleted_outputs} output files, and cleaned SQLite tables.",
+        }
+    )
+
 
 @app.get("/api/download/{filename}")
 async def download_file(filename: str):
     file_path = OUTPUT_DIR / filename
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(
-        path=str(file_path),
-        filename=filename,
-        media_type="application/octet-stream"
-    )
+    return FileResponse(path=str(file_path), filename=filename, media_type="application/octet-stream")
+
 
 @app.get("/api/download/svg/{base_name}/{svg_name}")
 async def download_svg(base_name: str, svg_name: str):
     file_path = OUTPUT_DIR / f"{base_name}_svgs" / svg_name
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="SVG file not found")
-    return FileResponse(
-        path=str(file_path),
-        filename=svg_name,
-        media_type="image/svg+xml"
-    )
+    return FileResponse(path=str(file_path), filename=svg_name, media_type="image/svg+xml")
+
 
 def open_browser(port: int = 8000):
     webbrowser.open(f"http://localhost:{port}")
+
 
 def main():
     parser = argparse.ArgumentParser(description="DocuMorph AI - PDF/Image to Word (.docx)")
     parser.add_argument("file", nargs="?", help="Path to input PDF or Image for direct CLI conversion")
     parser.add_argument("--port", type=int, default=8000, help="Port for web server (default: 8000)")
     parser.add_argument("--mode", choices=["fast", "agent"], default="agent", help="Processing mode (default: agent)")
-    parser.add_argument("--reload", action="store_true", default=True, help="Enable auto-reload on file change for local dev (default: True)")
+    parser.add_argument(
+        "--reload",
+        action="store_true",
+        default=True,
+        help="Enable auto-reload on file change for local dev (default: True)",
+    )
     parser.add_argument("--no-reload", action="store_false", dest="reload", help="Disable auto-reload")
     parser.add_argument("--no-browser", action="store_true", help="Don't open browser automatically")
     args = parser.parse_args()
@@ -1208,22 +1276,22 @@ def main():
         if args.mode == "agent":
             print(f"Running DocuMorph AI Agent on '{args.file}' with tools...")
             doc_agent = agent.DocuMorphAgent(args.file, output_dir=str(OUTPUT_DIR))
-            res = doc_agent.run_agent_workflow(
-                progress_callback=lambda msg, pct: print(f"[{int(pct*100)}%] {msg}")
-            )
+            res = doc_agent.run_agent_workflow(progress_callback=lambda msg, pct: print(f"[{int(pct * 100)}%] {msg}"))
         else:
             print(f"Processing '{args.file}' with fast pipeline...")
             res = engine.process_file_to_docx(
                 args.file,
                 output_dir=str(OUTPUT_DIR),
-                progress_callback=lambda msg, pct: print(f"[{int(pct*100)}%] {msg}")
+                progress_callback=lambda msg, pct: print(f"[{int(pct * 100)}%] {msg}"),
             )
         print("\n--- Conversion Completed Successfully! ---")
         print(f"Word Document: {res['docx_path']}")
         print(f"Markdown File: {res['md_path']}")
         print(f"Extracted SVGs ({len(res['svgs'])}): {res['svgs']}")
     else:
-        print(f"Starting DocuMorph AI Web App on http://localhost:{args.port} [Auto-Reload: {'ENABLED' if args.reload else 'DISABLED'}]")
+        print(
+            f"Starting DocuMorph AI Web App on http://localhost:{args.port} [Auto-Reload: {'ENABLED' if args.reload else 'DISABLED'}]"
+        )
         if not args.no_browser and os.environ.get("UVICORN_STARTED") != "1":
             threading.Timer(1.5, lambda: open_browser(args.port)).start()
 
@@ -1240,10 +1308,11 @@ def main():
                 reload=True,
                 reload_dirs=[str(BASE_DIR)],
                 reload_includes=["*.py", "*.html", "*.css", "*.js"],
-                log_level="info"
+                log_level="info",
             )
         else:
             uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="info")
+
 
 if __name__ == "__main__":
     main()

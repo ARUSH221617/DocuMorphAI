@@ -8,13 +8,14 @@ Discovers, parses, and provides agent skills from:
 import os
 import re
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 BASE_DIR = Path(__file__).resolve().parent
 LOCAL_SKILLS_DIR = BASE_DIR / "skills"
 GLOBAL_SKILLS_DIR = Path(os.path.expanduser("~/.agents/skills"))
 
-def parse_frontmatter(text: str) -> tuple[Dict[str, str], str]:
+
+def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
     """Parse YAML frontmatter from markdown without external dependencies."""
     meta = {}
     content = text
@@ -29,13 +30,15 @@ def parse_frontmatter(text: str) -> tuple[Dict[str, str], str]:
                     meta[k.strip().lower()] = v.strip().strip("\"'")
     return meta, content
 
-def get_skills_dirs() -> List[tuple[str, Path]]:
+
+def get_skills_dirs() -> list[tuple[str, Path]]:
     dirs = [("local", LOCAL_SKILLS_DIR)]
     if GLOBAL_SKILLS_DIR.exists():
         dirs.append(("global", GLOBAL_SKILLS_DIR))
     return dirs
 
-def list_skills() -> List[Dict[str, Any]]:
+
+def list_skills() -> list[dict[str, Any]]:
     """Return all available skills across local and global directories."""
     skills = []
     seen_names = set()
@@ -52,20 +55,23 @@ def list_skills() -> List[Dict[str, Any]]:
                         meta, body = parse_frontmatter(text)
                         name = meta.get("name") or item.name
                         desc = meta.get("description") or (body[:180].replace("\n", " ").strip() + "...")
-                        skills.append({
-                            "name": name,
-                            "folder": item.name,
-                            "description": desc,
-                            "scope": scope,
-                            "path": str(skill_md),
-                            "preview": body[:200]
-                        })
+                        skills.append(
+                            {
+                                "name": name,
+                                "folder": item.name,
+                                "description": desc,
+                                "scope": scope,
+                                "path": str(skill_md),
+                                "preview": body[:200],
+                            }
+                        )
                         seen_names.add(name)
                     except Exception:
                         pass
     return sorted(skills, key=lambda s: (0 if s["scope"] == "local" else 1, s["name"]))
 
-def get_skill(name: str) -> Optional[Dict[str, Any]]:
+
+def get_skill(name: str) -> dict[str, Any] | None:
     """Retrieve full skill metadata and instructions content by name."""
     name_clean = name.strip().lower()
     for scope, s_dir in get_skills_dirs():
@@ -87,18 +93,19 @@ def get_skill(name: str) -> Optional[Dict[str, Any]]:
                                 "scope": scope,
                                 "path": str(skill_md),
                                 "content": text,
-                                "instructions": body
+                                "instructions": body,
                             }
                     except Exception:
                         pass
     return None
+
 
 def save_local_skill(name: str, description: str, instructions: str) -> str:
     """Save or update a local project skill."""
     safe_name = re.sub(r"[^a-zA-Z0-9_\-]", "-", name.strip().lower()).strip("-")
     if not safe_name:
         raise ValueError("Invalid skill name")
-    
+
     skill_dir = LOCAL_SKILLS_DIR / safe_name
     skill_dir.mkdir(parents=True, exist_ok=True)
     skill_md = skill_dir / "SKILL.md"
@@ -108,15 +115,18 @@ def save_local_skill(name: str, description: str, instructions: str) -> str:
     skill_md.write_text(full_text, encoding="utf-8")
     return str(skill_md)
 
+
 def delete_local_skill(name: str) -> bool:
     """Delete a local project skill directory."""
     import shutil
+
     safe_name = re.sub(r"[^a-zA-Z0-9_\-]", "-", name.strip().lower()).strip("-")
     skill_dir = LOCAL_SKILLS_DIR / safe_name
     if skill_dir.is_dir() and skill_dir.resolve().is_relative_to(LOCAL_SKILLS_DIR.resolve()):
         shutil.rmtree(skill_dir, ignore_errors=True)
         return True
     return False
+
 
 def init_default_skills():
     """Bootstrap core default skills for document conversion."""
@@ -141,7 +151,7 @@ def init_default_skills():
    - Do NOT use non-standard LaTeX packages or commands (e.g. `\\color`, `\\tikz`).
    - Do NOT use `\\qquad` or `\\quad` in regular text; use standard spaces.
    - Keep LaTeX pure without embedded HTML.
-"""
+""",
         ),
         (
             "svg-diagram-architect",
@@ -160,7 +170,7 @@ def init_default_skills():
    - Vectors: define `<marker id="arrow" ...>` in `<defs>` and use `marker-end="url(#arrow)"`.
    - Labels: use `<text font-family="Arial" font-size="14" font-weight="bold">` placed with clear clearance.
 4. Clean self-contained tags: close every tag properly. No external image links or external fonts.
-"""
+""",
         ),
         (
             "table-and-matrix-styler",
@@ -176,7 +186,7 @@ def init_default_skills():
    - Never use `<br>` or multiline text inside a single cell; use comma or punctuation instead.
    - Escape pipes inside cell content using `\\|`.
    - Math inside cells: `$x^2$` is fully supported.
-"""
+""",
         ),
         (
             "persian-rtl-typesetter",
@@ -193,7 +203,7 @@ def init_default_skills():
 3. Layout:
    - Multiple choice options: use clean markdown list items or a single-row 4-column table:
      `| (الف) ... | (ب) ... | (ج) ... | (د) ... |`.
-"""
+""",
         ),
         (
             "page-layout-architect",
@@ -206,8 +216,8 @@ def init_default_skills():
 - Reconstruct questions as clean Markdown: `**۱-** سوال... (۱.۵ نمره)`.
 - SVGs MUST be standalone blocks placed directly where they appear. NEVER put SVGs inside table cells.
 - Tables are ONLY permitted for real tabular data (e.g. data tables, coordinate values, function tables).
-"""
-        )
+""",
+        ),
     ]
 
     for name, desc, body in defaults:
@@ -215,5 +225,6 @@ def init_default_skills():
         s_file = s_dir / "SKILL.md"
         if not s_file.exists():
             save_local_skill(name, desc, body)
+
 
 init_default_skills()

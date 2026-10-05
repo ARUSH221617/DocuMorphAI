@@ -8,14 +8,17 @@ Tests:
 5. Parsing and conversion of HTML (<br>, <b>, <u>) and XML/SVG code fences in markdown
 """
 
-import os
 import io
 import json
+import os
+
 import docx
-from converter import latex_to_omml, add_svg_to_doc, markdown_to_docx, is_persian_or_arabic
+
 import agent
-import skills
 import mcp_manager
+import skills
+from converter import add_svg_to_doc, is_persian_or_arabic, latex_to_omml, markdown_to_docx
+
 
 def test_latex_to_omml():
     omml = latex_to_omml(r"x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}")
@@ -24,10 +27,12 @@ def test_latex_to_omml():
     assert "oMath" in tag, f"Unexpected OMML tag: {tag}"
     print("✓ test_latex_to_omml passed")
 
+
 def test_persian_detection():
     assert is_persian_or_arabic("سلام دنیا") is True
     assert is_persian_or_arabic("Hello world") is False
     print("✓ test_persian_detection passed")
+
 
 def test_svg_to_docx():
     doc = docx.Document()
@@ -38,11 +43,13 @@ def test_svg_to_docx():
     assert len(buf.getvalue()) > 0
     print("✓ test_svg_to_docx passed")
 
+
 def test_agent_tools():
     test_pdf = "input/jahat8-1 31.pdf"
     if not os.path.exists(test_pdf):
         os.makedirs("input", exist_ok=True)
         import pypdfium2 as pdfium
+
         d = pdfium.PdfDocument.new()
         d.new_page(200, 200)
         d.save(test_pdf)
@@ -50,13 +57,16 @@ def test_agent_tools():
     res_latex = json.loads(ag.execute_tool("validate_latex", {"formulas": [r"E = mc^2", r"\frac{a}{b}"]}))
     assert all(r["valid"] for r in res_latex["results"]), "Agent validate_latex failed"
 
-    res_svg = json.loads(ag.execute_tool("validate_svg", {"svg_code": '<svg width="200" height="200" viewBox="0 0 200 200"></svg>'}))
+    res_svg = json.loads(
+        ag.execute_tool("validate_svg", {"svg_code": '<svg width="200" height="200" viewBox="0 0 200 200"></svg>'})
+    )
     assert res_svg["valid_xml"] is True and res_svg["has_viewbox"] is True
 
     ag.execute_tool("update_markdown", {"content": "# Header\nQuestion 1: x = 2"})
     ag.execute_tool("edit_markdown_snippet", {"search": "x = 2", "replace": "x = 5"})
     assert "x = 5" in ag.markdown, "Agent edit_markdown_snippet failed"
     print("✓ test_agent_tools passed")
+
 
 def test_xml_html_svg_conversion():
     sample_snippet = """# Question with HTML & XML
@@ -72,7 +82,7 @@ Line 1<br><br>```xml
     assert os.path.exists(out_docx)
     assert len(svgs) == 1
     assert os.path.exists(svgs[0])
-    
+
     # Clean up
     if os.path.exists(out_docx):
         os.remove(out_docx)
@@ -82,6 +92,7 @@ Line 1<br><br>```xml
         os.rmdir("output/_check_xml_html_svgs")
     print("✓ test_xml_html_svg_conversion passed")
 
+
 def test_skills_system():
     all_skills = skills.list_skills()
     assert len(all_skills) >= 4, f"Expected at least 4 skills, got {len(all_skills)}"
@@ -89,11 +100,12 @@ def test_skills_system():
     assert "math-formula-extractor" in names
     assert "svg-diagram-architect" in names
     assert "page-layout-architect" in names
-    
+
     sk = skills.get_skill("page-layout-architect")
     assert sk is not None
     assert "NEVER USE TABLES FOR PAGE OR EXAM LAYOUT" in sk["instructions"]
     print("✓ test_skills_system passed")
+
 
 def test_mcp_system():
     # Test MCP client tool discovery
@@ -116,14 +128,16 @@ def test_mcp_system():
     use_skill_json = json.loads(ag.execute_tool("use_skill", {"skill_name": "math-formula-extractor"}))
     assert use_skill_json.get("status") == "loaded"
 
-    mcp_call_json = json.loads(ag.execute_tool("call_mcp_tool", {
-        "server_id": "doc_utils",
-        "tool_name": "math_term_dictionary",
-        "arguments": {"term": "integral"}
-    }))
+    mcp_call_json = json.loads(
+        ag.execute_tool(
+            "call_mcp_tool",
+            {"server_id": "doc_utils", "tool_name": "math_term_dictionary", "arguments": {"term": "integral"}},
+        )
+    )
     assert mcp_call_json.get("status") == "success"
     assert "انتگرال" in mcp_call_json.get("output", "")
     print("✓ test_mcp_system passed")
+
 
 def test_agent_steps():
     test_pdf = "input/jahat8-1 31.pdf"
@@ -133,11 +147,14 @@ def test_agent_steps():
     assert "DOCUMENT VISION" in ag.steps[0]["title"]
     print("✓ test_agent_steps passed")
 
+
 def test_dynamic_models():
     from fastapi.testclient import TestClient
+
     import app
+
     client = TestClient(app.app)
-    resp = client.get('/api/models')
+    resp = client.get("/api/models")
     assert resp.status_code == 200
     data = resp.json()
     assert "models" in data
@@ -145,32 +162,38 @@ def test_dynamic_models():
     assert data["current_model"] in data["models"]
     print("✓ test_dynamic_models passed")
 
+
 def test_token_and_context_window():
     import db
+
     u = db.calculate_context_usage("ag/gemini-3.8-flash-high", 4000, 1000)
     assert u["total_tokens"] == 5000
     assert u["context_limit"] == 1_048_576
     assert u["context_percent"] == 0.48
 
     from fastapi.testclient import TestClient
+
     import app
+
     client = TestClient(app.app)
-    r = client.get('/api/history')
+    r = client.get("/api/history")
     assert r.status_code == 200
     d = r.json()
     assert "total_tokens" in d
     assert "formatted_total_tokens" in d
     print("✓ test_token_and_context_window passed")
 
+
 def test_api_context_window_and_tiktoken():
-    import tokenizer
-    import db
     from fastapi.testclient import TestClient
+
     import app
+    import db
+    import tokenizer
 
     client = TestClient(app.app)
     # Trigger model discovery & caching from API
-    r_models = client.get('/api/models')
+    r_models = client.get("/api/models")
     assert r_models.status_code == 200
     m_data = r_models.json()
     assert m_data.get("count") > 0
@@ -180,33 +203,38 @@ def test_api_context_window_and_tiktoken():
     assert len(cached_models) > 0
 
     # Verify tiktoken calculation
-    est = tokenizer.estimate_preflight_budget("Sample prompt text for token test", "ag/gemini-3.8-flash-high", page_count=1)
+    est = tokenizer.estimate_preflight_budget(
+        "Sample prompt text for token test", "ag/gemini-3.8-flash-high", page_count=1
+    )
     assert est["text_tokens"] > 0
     assert est["image_tokens"] == 1200
     assert est["context_limit"] == 1048576
 
     # Verify endpoint
-    r_est = client.post('/api/tools/estimate-tokens', json={
-        "text": "Hello world equation $x=1$",
-        "model": "ag/gemini-3.8-flash-high",
-        "page_count": 0
-    })
+    r_est = client.post(
+        "/api/tools/estimate-tokens",
+        json={"text": "Hello world equation $x=1$", "model": "ag/gemini-3.8-flash-high", "page_count": 0},
+    )
     assert r_est.status_code == 200
     res = r_est.json()
     assert res["text_tokens"] > 0
     assert res["context_limit"] == 1048576
     print("✓ test_api_context_window_and_tiktoken passed")
 
+
 def test_latex_spacing_and_qquad():
-    import converter
-    import docx
     import os
+
+    import docx
+
+    import converter
 
     # 1. Test in latex_to_omml
     formula = r"x = 1 \qquad y = 2"
     omml = converter.latex_to_omml(formula)
     assert omml is not None, "Failed to convert formula with \\qquad"
     from lxml import etree
+
     xml = etree.tostring(omml).decode("utf-8")
     assert "&#160;" in xml or "\u00a0" in xml
 
@@ -223,6 +251,18 @@ def test_latex_spacing_and_qquad():
         os.remove(out_docx)
     print("✓ test_latex_spacing_and_qquad passed")
 
+
+def test_ruff_lint_and_format():
+    import subprocess
+    import sys
+
+    res = subprocess.run([sys.executable, "-m", "ruff", "check", "."], capture_output=True, text=True)
+    assert res.returncode == 0, f"Ruff lint failed:\n{res.stdout}\n{res.stderr}"
+    res_fmt = subprocess.run([sys.executable, "-m", "ruff", "format", "--check", "."], capture_output=True, text=True)
+    assert res_fmt.returncode == 0, f"Ruff format check failed:\n{res_fmt.stdout}\n{res_fmt.stderr}"
+    print("✓ test_ruff_lint_and_format passed")
+
+
 if __name__ == "__main__":
     test_latex_to_omml()
     test_persian_detection()
@@ -236,4 +276,5 @@ if __name__ == "__main__":
     test_token_and_context_window()
     test_api_context_window_and_tiktoken()
     test_latex_spacing_and_qquad()
+    test_ruff_lint_and_format()
     print("\nAll self-checks passed successfully!")

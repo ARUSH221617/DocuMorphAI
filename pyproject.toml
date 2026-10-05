@@ -1,0 +1,39 @@
+[project]
+name = "documorph"
+version = "1.0.0"
+description = "AI-powered PDF and Image to Word (.docx) converter with native OMML equations and vector shapes"
+requires-python = ">=3.13"
+
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+exclude = [
+    ".git",
+    "__pycache__",
+    "input",
+    "output",
+    "assets",
+    "*.db"
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (prompts and inline XML/regex are intentionally long)
+    "E722",  # bare except (some fallback blocks intentionally catch Exception)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["converter", "engine", "agent", "db", "skills", "mcp_manager", "tokenizer", "app"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"

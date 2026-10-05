@@ -6,21 +6,24 @@ Handles:
 - Persistent job queue & execution tracking
 """
 
-import os
 import json
-import time
+import os
 import sqlite3
+import time
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any
+
 import dotenv
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "documorph.db"
 
+
 def get_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(str(DB_PATH), timeout=20.0)
     conn.row_factory = sqlite3.Row
     return conn
+
 
 def init_db():
     """Create tables and initialize defaults from .env if empty."""
@@ -92,7 +95,7 @@ def init_db():
             ("completion_tokens", "INTEGER DEFAULT 0"),
             ("total_tokens", "INTEGER DEFAULT 0"),
             ("context_limit", "INTEGER DEFAULT 128000"),
-            ("context_percent", "REAL DEFAULT 0.0")
+            ("context_percent", "REAL DEFAULT 0.0"),
         ]:
             try:
                 cursor.execute(f"ALTER TABLE jobs ADD COLUMN {col} {col_type}")
@@ -105,16 +108,21 @@ def init_db():
         env_vals = dotenv.dotenv_values(env_path) if env_path.exists() else {}
 
         defaults = {
-            "OPENAI_API_BASE_URL": os.getenv("OPENAI_API_BASE_URL") or env_vals.get("OPENAI_API_BASE_URL") or "http://localhost:20128/v1",
+            "OPENAI_API_BASE_URL": os.getenv("OPENAI_API_BASE_URL")
+            or env_vals.get("OPENAI_API_BASE_URL")
+            or "http://localhost:20128/v1",
             "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY") or env_vals.get("OPENAI_API_KEY") or "",
-            "AI_DEFAULT_MODEL": os.getenv("AI_DEFAULT_MODEL") or env_vals.get("AI_DEFAULT_MODEL") or "ag/gemini-3.8-flash-high",
+            "AI_DEFAULT_MODEL": os.getenv("AI_DEFAULT_MODEL")
+            or env_vals.get("AI_DEFAULT_MODEL")
+            or "ag/gemini-3.8-flash-high",
             "OUTPUT_PATH": os.getenv("OUTPUT_PATH") or env_vals.get("OUTPUT_PATH") or str(BASE_DIR / "output"),
-            "MAX_CONCURRENT_JOBS": "3"
+            "MAX_CONCURRENT_JOBS": "3",
         }
 
         for k, v in defaults.items():
             cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, str(v)))
         conn.commit()
+
 
 def calculate_cost(model: str, prompt_tokens: int, completion_tokens: int) -> float:
     """Calculate estimated API cost in USD based on model token rates."""
@@ -133,6 +141,7 @@ def calculate_cost(model: str, prompt_tokens: int, completion_tokens: int) -> fl
         rate_out = 1.50 / 1_000_000
     return round((prompt_tokens * rate_in) + (completion_tokens * rate_out), 6)
 
+
 def format_duration(seconds: float) -> str:
     """Format duration in human-readable seconds or minutes."""
     if not seconds or seconds <= 0:
@@ -143,6 +152,7 @@ def format_duration(seconds: float) -> str:
     secs = int(seconds % 60)
     return f"{mins}m {secs}s"
 
+
 def format_cost(cost_usd: float) -> str:
     """Format cost nicely in USD."""
     if not cost_usd or cost_usd <= 0:
@@ -151,7 +161,8 @@ def format_cost(cost_usd: float) -> str:
         return f"${cost_usd:.6f}"
     return f"${cost_usd:.4f}"
 
-def cache_model_metadata(model_id: str, context_window: int, max_output: Optional[int] = None):
+
+def cache_model_metadata(model_id: str, context_window: int, max_output: int | None = None):
     """Save or update model context window ceiling loaded directly from the API."""
     if not model_id or not context_window:
         return
@@ -163,11 +174,12 @@ def cache_model_metadata(model_id: str, context_window: int, max_output: Optiona
                    context_window = excluded.context_window,
                    max_output = excluded.max_output,
                    updated_at = excluded.updated_at""",
-            (model_id, int(context_window), max_output, time.time())
+            (model_id, int(context_window), max_output, time.time()),
         )
         conn.commit()
 
-def get_cached_model_metadata(model_id: str) -> Optional[Dict[str, Any]]:
+
+def get_cached_model_metadata(model_id: str) -> dict[str, Any] | None:
     """Retrieve cached context window metadata for a model from SQLite."""
     if not model_id:
         return None
@@ -176,14 +188,19 @@ def get_cached_model_metadata(model_id: str) -> Optional[Dict[str, Any]]:
         if row:
             return dict(row)
         # Try prefix / suffix match if exact doesn't hit
-        row = conn.execute("SELECT * FROM model_metadata WHERE ? LIKE ('%' || model_id || '%') OR model_id LIKE ('%' || ? || '%') LIMIT 1", (model_id, model_id)).fetchone()
+        row = conn.execute(
+            "SELECT * FROM model_metadata WHERE ? LIKE ('%' || model_id || '%') OR model_id LIKE ('%' || ? || '%') LIMIT 1",
+            (model_id, model_id),
+        ).fetchone()
         return dict(row) if row else None
 
-def get_all_cached_models() -> Dict[str, Dict[str, Any]]:
+
+def get_all_cached_models() -> dict[str, dict[str, Any]]:
     """Return all cached model limits."""
     with get_connection() as conn:
         rows = conn.execute("SELECT * FROM model_metadata").fetchall()
         return {r["model_id"]: dict(r) for r in rows}
+
 
 def get_model_context_window(model_name: str) -> int:
     """Return model maximum context window token ceiling loaded from API cache or fallback."""
@@ -195,7 +212,8 @@ def get_model_context_window(model_name: str) -> int:
     # 2. Heuristic fallback if API cache not populated yet
     return 1_000_000
 
-def calculate_context_usage(model_name: str, prompt_tokens: int, completion_tokens: int = 0) -> Dict[str, Any]:
+
+def calculate_context_usage(model_name: str, prompt_tokens: int, completion_tokens: int = 0) -> dict[str, Any]:
     """Calculate token totals and percentage of model context window used."""
     total = (prompt_tokens or 0) + (completion_tokens or 0)
     limit = get_model_context_window(model_name)
@@ -209,10 +227,11 @@ def calculate_context_usage(model_name: str, prompt_tokens: int, completion_toke
         "formatted_tokens": f"{total:,}",
         "formatted_limit": f"{limit:,}",
         "formatted_percent": f"{pct:.2f}%",
-        "formatted_summary": f"{total:,} / {limit:,} ({pct:.2f}%)"
+        "formatted_summary": f"{total:,} / {limit:,} ({pct:.2f}%)",
     }
 
-def get_total_tokens_consumed() -> Dict[str, int]:
+
+def get_total_tokens_consumed() -> dict[str, int]:
     """Calculate aggregate token consumption across all historical jobs in SQLite."""
     with get_connection() as conn:
         row = conn.execute("""
@@ -225,8 +244,9 @@ def get_total_tokens_consumed() -> Dict[str, int]:
         return {
             "prompt_tokens": int(row["total_prompt"] or 0),
             "completion_tokens": int(row["total_completion"] or 0),
-            "total_tokens": int(row["total_all"] or 0)
+            "total_tokens": int(row["total_all"] or 0),
         }
+
 
 def clean_db():
     """Wipe jobs and chat_history tables, run VACUUM. Settings preserved."""
@@ -236,39 +256,49 @@ def clean_db():
         conn.commit()
         conn.execute("VACUUM")
 
+
 # --- SETTINGS REPOSITORY ---
 
-def get_setting(key: str, default: Optional[str] = None) -> Optional[str]:
+
+def get_setting(key: str, default: str | None = None) -> str | None:
     with get_connection() as conn:
         row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
         return row["value"] if row else default
 
+
 def set_setting(key: str, value: str):
     with get_connection() as conn:
-        conn.execute("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, str(value)))
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, str(value)),
+        )
         conn.commit()
 
-def get_all_settings() -> Dict[str, str]:
+
+def get_all_settings() -> dict[str, str]:
     with get_connection() as conn:
         rows = conn.execute("SELECT key, value FROM settings").fetchall()
         return {r["key"]: r["value"] for r in rows}
 
+
 # --- CHAT HISTORY REPOSITORY ---
+
 
 def add_chat_message(base_name: str, role: str, content: str) -> int:
     with get_connection() as conn:
         cur = conn.execute(
             "INSERT INTO chat_history (base_name, role, content, timestamp) VALUES (?, ?, ?, ?)",
-            (base_name, role, content, time.time())
+            (base_name, role, content, time.time()),
         )
         conn.commit()
         return cur.lastrowid
 
-def get_chat_history(base_name: str) -> List[Dict[str, Any]]:
+
+def get_chat_history(base_name: str) -> list[dict[str, Any]]:
     with get_connection() as conn:
         rows = conn.execute(
             "SELECT id, base_name, role, content, timestamp FROM chat_history WHERE base_name = ? ORDER BY id ASC",
-            (base_name,)
+            (base_name,),
         ).fetchall()
         return [
             {
@@ -277,14 +307,16 @@ def get_chat_history(base_name: str) -> List[Dict[str, Any]]:
                 "role": r["role"],
                 "content": r["content"],
                 "timestamp": r["timestamp"],
-                "formatted_time": time.strftime("%H:%M:%S", time.localtime(r["timestamp"]))
+                "formatted_time": time.strftime("%H:%M:%S", time.localtime(r["timestamp"])),
             }
             for r in rows
         ]
 
+
 # --- MCP SERVERS REPOSITORY ---
 
-def list_mcp_servers() -> List[Dict[str, Any]]:
+
+def list_mcp_servers() -> list[dict[str, Any]]:
     with get_connection() as conn:
         rows = conn.execute("SELECT * FROM mcp_servers ORDER BY created_at ASC").fetchall()
         result = []
@@ -301,7 +333,8 @@ def list_mcp_servers() -> List[Dict[str, Any]]:
             result.append(d)
         return result
 
-def get_mcp_server(server_id: str) -> Optional[Dict[str, Any]]:
+
+def get_mcp_server(server_id: str) -> dict[str, Any] | None:
     with get_connection() as conn:
         row = conn.execute("SELECT * FROM mcp_servers WHERE id = ?", (server_id,)).fetchone()
         if not row:
@@ -317,15 +350,16 @@ def get_mcp_server(server_id: str) -> Optional[Dict[str, Any]]:
             d["env"] = {}
         return d
 
+
 def save_mcp_server(
     server_id: str,
     name: str,
     server_type: str = "stdio",
-    command: Optional[str] = None,
-    args: Optional[List[str]] = None,
-    env: Optional[Dict[str, str]] = None,
-    url: Optional[str] = None,
-    enabled: int = 1
+    command: str | None = None,
+    args: list[str] | None = None,
+    env: dict[str, str] | None = None,
+    url: str | None = None,
+    enabled: int = 1,
 ):
     with get_connection() as conn:
         conn.execute(
@@ -348,27 +382,31 @@ def save_mcp_server(
                 json.dumps(env or {}),
                 url or "",
                 enabled,
-                time.time()
-            )
+                time.time(),
+            ),
         )
         conn.commit()
+
 
 def delete_mcp_server(server_id: str):
     with get_connection() as conn:
         conn.execute("DELETE FROM mcp_servers WHERE id = ?", (server_id,))
         conn.commit()
 
+
 # --- JOBS REPOSITORY ---
 
-def create_job(job_id: str, filename: str, file_path: str, mode: str = "agent", model: Optional[str] = None):
+
+def create_job(job_id: str, filename: str, file_path: str, mode: str = "agent", model: str | None = None):
     now = time.time()
     with get_connection() as conn:
         conn.execute(
             """INSERT INTO jobs (id, filename, file_path, status, percent, message, mode, model, created_at)
                VALUES (?, ?, ?, 'queued', 0, 'In queue waiting for worker...', ?, ?, ?)""",
-            (job_id, filename, file_path, mode, model or "", now)
+            (job_id, filename, file_path, mode, model or "", now),
         )
         conn.commit()
+
 
 def update_job(job_id: str, **kwargs):
     if "prompt_tokens" in kwargs or "completion_tokens" in kwargs:
@@ -402,7 +440,8 @@ def update_job(job_id: str, **kwargs):
         conn.execute(f"UPDATE jobs SET {', '.join(fields)} WHERE id = ?", tuple(values))
         conn.commit()
 
-def get_job(job_id: str) -> Optional[Dict[str, Any]]:
+
+def get_job(job_id: str) -> dict[str, Any] | None:
     with get_connection() as conn:
         row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
         if not row:
@@ -417,11 +456,12 @@ def get_job(job_id: str) -> Optional[Dict[str, Any]]:
             d["result"] = None
         return d
 
-def get_job_by_basename(base_name: str) -> Optional[Dict[str, Any]]:
+
+def get_job_by_basename(base_name: str) -> dict[str, Any] | None:
     with get_connection() as conn:
         row = conn.execute(
             "SELECT * FROM jobs WHERE id = ? OR filename LIKE ? OR file_path LIKE ? ORDER BY created_at DESC LIMIT 1",
-            (base_name, f"%{base_name}%", f"%{base_name}%")
+            (base_name, f"%{base_name}%", f"%{base_name}%"),
         ).fetchone()
         if not row:
             return None
@@ -435,25 +475,24 @@ def get_job_by_basename(base_name: str) -> Optional[Dict[str, Any]]:
             d["result"] = None
         return d
 
-def get_next_queued_job() -> Optional[Dict[str, Any]]:
+
+def get_next_queued_job() -> dict[str, Any] | None:
     with get_connection() as conn:
-        row = conn.execute(
-            "SELECT * FROM jobs WHERE status = 'queued' ORDER BY created_at ASC LIMIT 1"
-        ).fetchone()
+        row = conn.execute("SELECT * FROM jobs WHERE status = 'queued' ORDER BY created_at ASC LIMIT 1").fetchone()
         if not row:
             return None
         return dict(row)
+
 
 def count_active_jobs() -> int:
     with get_connection() as conn:
         row = conn.execute("SELECT count(*) as cnt FROM jobs WHERE status = 'processing'").fetchone()
         return row["cnt"] if row else 0
 
-def list_jobs(limit: int = 50) -> List[Dict[str, Any]]:
+
+def list_jobs(limit: int = 50) -> list[dict[str, Any]]:
     with get_connection() as conn:
-        rows = conn.execute(
-            "SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?", (limit,)
-        ).fetchall()
+        rows = conn.execute("SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
         res = []
         for r in rows:
             d = dict(r)
@@ -466,6 +505,7 @@ def list_jobs(limit: int = 50) -> List[Dict[str, Any]]:
                 d["result"] = None
             res.append(d)
         return res
+
 
 # Initialize on import
 init_db()
