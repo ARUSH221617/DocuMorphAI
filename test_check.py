@@ -252,6 +252,36 @@ def test_latex_spacing_and_qquad():
     print("✓ test_latex_spacing_and_qquad passed")
 
 
+def test_svg_word_compatibility():
+    import os
+    import zipfile
+
+    import docx
+
+    import converter
+
+    test_docx = "output/_check_svg_compat.docx"
+    doc = docx.Document()
+    svg = '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="purple"/></svg>'
+    converter.add_svg_to_doc(doc, svg)
+    doc.save(test_docx)
+    converter.patch_docx_for_svg_shapes(test_docx)
+
+    with zipfile.ZipFile(test_docx, "r") as z:
+        ct = z.read("[Content_Types].xml").decode("utf-8")
+        settings = z.read("word/settings.xml").decode("utf-8")
+        doc_xml = z.read("word/document.xml").decode("utf-8")
+
+        assert '<Default Extension="svg" ContentType="image/svg+xml"/>' in ct, "Missing Default svg content type"
+        assert 'w:val="16"' in settings, "compatibilityMode not upgraded to 16"
+        assert "xmlns:asvg=" in doc_xml, "xmlns:asvg not declared on w:document"
+        assert "asvg" in doc_xml, "asvg not in mc:Ignorable"
+
+    if os.path.exists(test_docx):
+        os.remove(test_docx)
+    print("✓ test_svg_word_compatibility passed")
+
+
 def test_ruff_lint_and_format():
     import subprocess
     import sys
@@ -276,5 +306,6 @@ if __name__ == "__main__":
     test_token_and_context_window()
     test_api_context_window_and_tiktoken()
     test_latex_spacing_and_qquad()
+    test_svg_word_compatibility()
     test_ruff_lint_and_format()
     print("\nAll self-checks passed successfully!")

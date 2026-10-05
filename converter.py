@@ -11,7 +11,9 @@ import html
 import io
 import os
 import re
+import sys
 import uuid
+import zipfile
 
 import docx
 import latex2mathml.converter
@@ -36,6 +38,31 @@ def get_xslt():
         if os.path.exists(XSLT_PATH):
             _XSLT_TRANSFORM = etree.XSLT(etree.parse(XSLT_PATH))
     return _XSLT_TRANSFORM
+
+
+_QT_APP = None
+
+
+def get_qt_app():
+    """Ensure a singleton QGuiApplication is initialized safely for cross-thread rasterization."""
+    global _QT_APP
+    if _QT_APP is None:
+        try:
+            from PySide6.QtGui import QGuiApplication
+
+            _QT_APP = QGuiApplication.instance()
+            if _QT_APP is None:
+                _QT_APP = QGuiApplication(sys.argv if hasattr(sys, "argv") and sys.argv else ["documorph"])
+        except Exception:
+            pass
+    return _QT_APP
+
+
+# Initialize once at module load if on main thread
+try:
+    get_qt_app()
+except Exception:
+    pass
 
 
 def is_persian_or_arabic(text: str) -> bool:
@@ -98,15 +125,11 @@ def render_svg_to_png(svg_clean: str) -> bytes:
     Uses PySide6.QtSvg if available; falls back to clean Pillow raster image.
     """
     try:
-        import sys
-
         from PySide6.QtCore import QBuffer, QByteArray
-        from PySide6.QtGui import QColor, QGuiApplication, QImage, QPainter
+        from PySide6.QtGui import QColor, QImage, QPainter
         from PySide6.QtSvg import QSvgRenderer
 
-        app = QGuiApplication.instance()
-        if app is None:
-            app = QGuiApplication(sys.argv)
+        get_qt_app()
 
         renderer = QSvgRenderer(QByteArray(svg_clean.encode("utf-8")))
         size = renderer.defaultSize()
@@ -137,6 +160,37 @@ def render_svg_to_png(svg_clean: str) -> bytes:
     return bio.getvalue()
 
 
+def sanitize_svg_dimensions(svg_content: str) -> str:
+    """Ensure SVG XML has explicit width, height, viewBox, and required namespace attributes."""
+    svg = svg_content.strip()
+    m = re.search(r"<svg[\s\S]*?</svg>", svg, re.IGNORECASE)
+    if m:
+        svg = m.group(0)
+
+    # Ensure root xmlns
+    if 'xmlns="http://www.w3.org/2000/svg"' not in svg and "xmlns='http://www.w3.org/2000/svg'" not in svg:
+        svg = re.sub(r"<svg\b", '<svg xmlns="http://www.w3.org/2000/svg"', svg, count=1, flags=re.I)
+
+    # Ensure width and height from viewBox if missing
+    root_tag_match = re.search(r"<svg\b([^>]*)>", svg, re.I)
+    if root_tag_match:
+        attrs = root_tag_match.group(1)
+        has_width = bool(re.search(r"\bwidth\s*=", attrs, re.I))
+        has_height = bool(re.search(r"\bheight\s*=", attrs, re.I))
+        vb_match = re.search(
+            r"\bviewBox\s*=\s*[\"']\s*([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s*[\"']", attrs, re.I
+        )
+
+        if not has_width and vb_match:
+            w_val = vb_match.group(3)
+            svg = re.sub(r"<svg\b", f'<svg width="{w_val}"', svg, count=1, flags=re.I)
+        if not has_height and vb_match:
+            h_val = vb_match.group(4)
+            svg = re.sub(r"<svg\b", f'<svg height="{h_val}"', svg, count=1, flags=re.I)
+
+    return svg
+
+
 def add_svg_to_doc(doc, svg_content: str, width=Inches(3.8), target_paragraph=None):
     """
     Insert SVG directly into Word document with full vector shape support (asvg:svgBlip)
@@ -146,12 +200,9 @@ def add_svg_to_doc(doc, svg_content: str, width=Inches(3.8), target_paragraph=No
     p = target_paragraph if target_paragraph is not None else doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-    svg_clean = svg_content.strip()
-    m = re.search(r"<svg[\s\S]*?</svg>", svg_clean, re.IGNORECASE)
-    if m:
-        svg_clean = m.group(0)
+    svg_clean = sanitize_svg_dimensions(svg_content)
 
-    # 1. Generate real rasterized PNG so Word renders immediately
+    # 1. Generate real rasterized PNG so Word renders visually immediately
     png_bytes = render_svg_to_png(svg_clean)
 
     run = p.add_run()
@@ -164,7 +215,7 @@ def add_svg_to_doc(doc, svg_content: str, width=Inches(3.8), target_paragraph=No
     svg_rId = doc.part.relate_to(svg_part, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image")
 
     blip = pic._inline.graphic.graphicData.pic.blipFill.blip
-    ext_xml = f'''
+    ext_xml = f"""
     <a:extLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
         <a:ext uri="{{96DAC542-00C1-44C9-A059-E6573EC2B148}}">
             <asvg:svgBlip xmlns:asvg="http://schemas.microsoft.com/office/drawing/2016/SVG/main"
@@ -172,9 +223,67 @@ def add_svg_to_doc(doc, svg_content: str, width=Inches(3.8), target_paragraph=No
                           r:embed="{svg_rId}"/>
         </a:ext>
     </a:extLst>
-    '''
+    """
     blip.append(parse_xml(ext_xml))
     return p
+
+
+def patch_docx_for_svg_shapes(docx_path: str):
+    """
+    Post-process saved .docx package to ensure Microsoft Word fully enables:
+    1. Modern Word 2016+ mode (compatibilityMode 16) instead of Word 2010 compatibility mode.
+       (Crucial: Word 2010 compatibilityMode=14 disables 'Convert to Shape'!)
+    2. Default SVG content type in [Content_Types].xml (<Default Extension="svg" ContentType="image/svg+xml"/>).
+    3. asvg and a16 DrawingML namespaces declared in word/document.xml and added to mc:Ignorable.
+    """
+    if not os.path.exists(docx_path):
+        return
+
+    temp_path = docx_path + ".tmp"
+    with zipfile.ZipFile(docx_path, "r") as zin, zipfile.ZipFile(temp_path, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "[Content_Types].xml":
+                text = data.decode("utf-8")
+                if '<Default Extension="svg"' not in text:
+                    text = re.sub(
+                        r"(<Types\b[^>]*>)",
+                        r'\1<Default Extension="svg" ContentType="image/svg+xml"/>',
+                        text,
+                        count=1,
+                    )
+                    data = text.encode("utf-8")
+            elif item.filename == "word/settings.xml":
+                text = data.decode("utf-8")
+                # Upgrade compatibilityMode 14 to 16 to exit legacy compatibility mode
+                text = re.sub(
+                    r'(<w:compatSetting\s+[^>]*w:name="compatibilityMode"[^>]*w:val=")\d+(")',
+                    r"\g<1>16\2",
+                    text,
+                )
+                data = text.encode("utf-8")
+            elif item.filename == "word/document.xml":
+                text = data.decode("utf-8")
+                # Ensure asvg and a16 namespaces are declared on <w:document>
+                if "xmlns:asvg=" not in text:
+                    text = re.sub(
+                        r"(<w:document\b[^>]*)>",
+                        r'\1 xmlns:asvg="http://schemas.microsoft.com/office/drawing/2016/SVG/main" xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main">',
+                        text,
+                        count=1,
+                    )
+                # Ensure asvg and a16 are included in mc:Ignorable so Word activates the SVG extension
+                if "mc:Ignorable=" in text and "asvg" not in text:
+                    text = re.sub(
+                        r'mc:Ignorable="([^"]*)"',
+                        r'mc:Ignorable="\1 asvg a16"',
+                        text,
+                        count=1,
+                    )
+                data = text.encode("utf-8")
+            zout.writestr(item, data)
+
+    os.replace(temp_path, docx_path)
 
 
 def clean_html_tags(text: str) -> str:
@@ -562,4 +671,6 @@ def markdown_to_docx(md_content: str, output_docx_path: str, output_dir: str = N
         i += 1
 
     doc.save(output_docx_path)
+    # Post-process package for modern Word 2016+ mode and SVG Convert to Shape support
+    patch_docx_for_svg_shapes(output_docx_path)
     return exported_svgs
