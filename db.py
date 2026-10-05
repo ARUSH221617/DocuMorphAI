@@ -74,6 +74,14 @@ def init_db():
                 created_at REAL NOT NULL
             )
         """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS model_metadata (
+                model_id TEXT PRIMARY KEY,
+                context_window INTEGER NOT NULL,
+                max_output INTEGER,
+                updated_at REAL NOT NULL
+            )
+        """)
         conn.commit()
 
         # Migrate jobs table with duration, token counts, and cost
@@ -95,7 +103,7 @@ def init_db():
         # Seed settings from .env if not yet set
         env_path = BASE_DIR / ".env"
         env_vals = dotenv.dotenv_values(env_path) if env_path.exists() else {}
-        
+
         defaults = {
             "OPENAI_API_BASE_URL": os.getenv("OPENAI_API_BASE_URL") or env_vals.get("OPENAI_API_BASE_URL") or "http://localhost:20128/v1",
             "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY") or env_vals.get("OPENAI_API_KEY") or "",
@@ -103,7 +111,7 @@ def init_db():
             "OUTPUT_PATH": os.getenv("OUTPUT_PATH") or env_vals.get("OUTPUT_PATH") or str(BASE_DIR / "output"),
             "MAX_CONCURRENT_JOBS": "3"
         }
-        
+
         for k, v in defaults.items():
             cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, str(v)))
         conn.commit()
@@ -143,22 +151,49 @@ def format_cost(cost_usd: float) -> str:
         return f"${cost_usd:.6f}"
     return f"${cost_usd:.4f}"
 
+def cache_model_metadata(model_id: str, context_window: int, max_output: Optional[int] = None):
+    """Save or update model context window ceiling loaded directly from the API."""
+    if not model_id or not context_window:
+        return
+    with get_connection() as conn:
+        conn.execute(
+            """INSERT INTO model_metadata (model_id, context_window, max_output, updated_at)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(model_id) DO UPDATE SET
+                   context_window = excluded.context_window,
+                   max_output = excluded.max_output,
+                   updated_at = excluded.updated_at""",
+            (model_id, int(context_window), max_output, time.time())
+        )
+        conn.commit()
+
+def get_cached_model_metadata(model_id: str) -> Optional[Dict[str, Any]]:
+    """Retrieve cached context window metadata for a model from SQLite."""
+    if not model_id:
+        return None
+    with get_connection() as conn:
+        row = conn.execute("SELECT * FROM model_metadata WHERE model_id = ?", (model_id,)).fetchone()
+        if row:
+            return dict(row)
+        # Try prefix / suffix match if exact doesn't hit
+        row = conn.execute("SELECT * FROM model_metadata WHERE ? LIKE ('%' || model_id || '%') OR model_id LIKE ('%' || ? || '%') LIMIT 1", (model_id, model_id)).fetchone()
+        return dict(row) if row else None
+
+def get_all_cached_models() -> Dict[str, Dict[str, Any]]:
+    """Return all cached model limits."""
+    with get_connection() as conn:
+        rows = conn.execute("SELECT * FROM model_metadata").fetchall()
+        return {r["model_id"]: dict(r) for r in rows}
+
 def get_model_context_window(model_name: str) -> int:
-    """Return model maximum context window token ceiling."""
-    m = (model_name or "").lower()
-    if "gemini" in m:
-        return 1_048_576  # 1M context
-    elif "claude" in m:
-        return 200_000
-    elif "gpt-4o" in m or "gpt-4" in m:
-        return 128_000
-    elif "deepseek" in m:
-        return 64_000
-    elif "gemma" in m:
-        return 131_072
-    elif "llama" in m or "qwen" in m:
-        return 128_000
-    return 128_000
+    """Return model maximum context window token ceiling loaded from API cache or fallback."""
+    # 1. Check SQLite model_metadata cache
+    cached = get_cached_model_metadata(model_name)
+    if cached and cached.get("context_window"):
+        return int(cached["context_window"])
+
+    # 2. Heuristic fallback if API cache not populated yet
+    return 1_000_000
 
 def calculate_context_usage(model_name: str, prompt_tokens: int, completion_tokens: int = 0) -> Dict[str, Any]:
     """Calculate token totals and percentage of model context window used."""

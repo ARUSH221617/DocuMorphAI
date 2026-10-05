@@ -162,6 +162,41 @@ def test_token_and_context_window():
     assert "formatted_total_tokens" in d
     print("✓ test_token_and_context_window passed")
 
+def test_api_context_window_and_tiktoken():
+    import tokenizer
+    import db
+    from fastapi.testclient import TestClient
+    import app
+
+    client = TestClient(app.app)
+    # Trigger model discovery & caching from API
+    r_models = client.get('/api/models')
+    assert r_models.status_code == 200
+    m_data = r_models.json()
+    assert m_data.get("count") > 0
+
+    # Verify context windows were cached from API into SQLite
+    cached_models = db.get_all_cached_models()
+    assert len(cached_models) > 0
+
+    # Verify tiktoken calculation
+    est = tokenizer.estimate_preflight_budget("Sample prompt text for token test", "ag/gemini-3.8-flash-high", page_count=1)
+    assert est["text_tokens"] > 0
+    assert est["image_tokens"] == 1200
+    assert est["context_limit"] == 1048576
+
+    # Verify endpoint
+    r_est = client.post('/api/tools/estimate-tokens', json={
+        "text": "Hello world equation $x=1$",
+        "model": "ag/gemini-3.8-flash-high",
+        "page_count": 0
+    })
+    assert r_est.status_code == 200
+    res = r_est.json()
+    assert res["text_tokens"] > 0
+    assert res["context_limit"] == 1048576
+    print("✓ test_api_context_window_and_tiktoken passed")
+
 if __name__ == "__main__":
     test_latex_to_omml()
     test_persian_detection()
@@ -173,4 +208,5 @@ if __name__ == "__main__":
     test_agent_steps()
     test_dynamic_models()
     test_token_and_context_window()
+    test_api_context_window_and_tiktoken()
     print("\nAll self-checks passed successfully!")

@@ -32,6 +32,7 @@ import converter
 import db
 import skills
 import mcp_manager
+import tokenizer
 
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
@@ -269,6 +270,12 @@ async def on_startup():
         DISPATCHER_THREAD = threading.Thread(target=queue_dispatcher_loop, daemon=True)
         DISPATCHER_THREAD.start()
 
+class TokenEstimateRequest(BaseModel):
+    text: Optional[str] = ""
+    model: Optional[str] = None
+    page_count: Optional[int] = 0
+    expected_output_tokens: Optional[int] = None
+
 class AgentEditRequest(BaseModel):
     base_name: str
     prompt: str
@@ -292,16 +299,40 @@ async def index(request: Request):
 
 @app.get("/api/models")
 async def get_models():
-    """Retrieve dynamic list of available models from OpenAI-compatible API endpoint."""
+    """Retrieve dynamic list of available models from OpenAI-compatible API endpoint and cache context limits."""
     current_default = db.get_setting("AI_DEFAULT_MODEL", engine.AI_DEFAULT_MODEL)
     try:
         client = engine.get_ai_client()
         resp = client.models.list()
         raw_models = []
+        detailed_models = []
+
         if hasattr(resp, "data") and resp.data:
-            raw_models = [m.id for m in resp.data if hasattr(m, "id") and m.id]
-        elif isinstance(resp, list):
-            raw_models = [getattr(m, "id", str(m)) for m in resp]
+            for m in resp.data:
+                mid = getattr(m, "id", None)
+                if not mid:
+                    continue
+                raw_models.append(mid)
+
+                # Extract context length from API response
+                m_dump = m.model_dump() if hasattr(m, "model_dump") else getattr(m, "__dict__", {})
+                caps = m_dump.get("capabilities") or {}
+                ctx = (
+                    m_dump.get("context_length")
+                    or caps.get("contextWindow")
+                    or m_dump.get("max_model_len")
+                    or 0
+                )
+                max_out = caps.get("maxOutput") or m_dump.get("max_completion_tokens") or None
+
+                if ctx and int(ctx) > 0:
+                    db.cache_model_metadata(mid, int(ctx), int(max_out) if max_out else None)
+
+                detailed_models.append({
+                    "id": mid,
+                    "context_window": int(ctx) if ctx else db.get_model_context_window(mid),
+                    "max_output": max_out
+                })
 
         # Deduplicate preserving order
         seen = set()
@@ -315,21 +346,25 @@ async def get_models():
                 seen.add(mid)
                 model_list.append(mid)
 
+        models_map = {m["id"]: m for m in detailed_models}
+
         return {
             "success": True,
             "models": model_list,
+            "models_detail": detailed_models,
+            "models_map": models_map,
             "current_model": current_default,
             "count": len(model_list),
             "source": "api"
         }
     except Exception as e:
-        fallback = [
-            current_default
-        ]
+        fallback = [current_default]
         unique_fallback = list(dict.fromkeys([m for m in fallback if m]))
         return {
             "success": False,
             "models": unique_fallback,
+            "models_detail": [{"id": m, "context_window": db.get_model_context_window(m)} for m in unique_fallback],
+            "models_map": {m: {"id": m, "context_window": db.get_model_context_window(m)} for m in unique_fallback},
             "current_model": current_default,
             "count": len(unique_fallback),
             "source": "fallback",
@@ -887,6 +922,18 @@ async def delete_history_document(base_name: str):
         deleted_files.append(f"{base_name}_svgs/")
 
     return {"success": True, "base_name": base_name, "deleted": deleted_files}
+
+@app.post("/api/tools/estimate-tokens")
+async def api_estimate_tokens(req: TokenEstimateRequest):
+    """Accurately estimate tokens and pre-flight budget using tiktoken and API-loaded context window."""
+    chosen_model = req.model or db.get_setting("AI_DEFAULT_MODEL", engine.AI_DEFAULT_MODEL)
+    budget = tokenizer.estimate_preflight_budget(
+        text=req.text or "",
+        model_name=chosen_model,
+        page_count=req.page_count or 0,
+        expected_output_tokens=req.expected_output_tokens
+    )
+    return budget
 
 @app.post("/api/tools/validate-latex")
 async def api_validate_latex(req: ValidateLatexRequest):

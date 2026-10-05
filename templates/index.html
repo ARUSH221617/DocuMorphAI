@@ -1801,9 +1801,14 @@
             <button class="btn-primary" id="btnAgentEdit">APPLY WITH AGENT</button>
             <button class="btn-secondary" id="btnRecompileDocx">REBUILD WORD (.DOCX)</button>
           </div>
-          <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
-            <span style="font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; color: var(--muted-foreground); text-transform: uppercase;">FAST SKILLS INJECT:</span>
-            <div id="agentSkillsPills" style="display: flex; gap: 0.4rem; flex-wrap: wrap;"></div>
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+              <span style="font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; color: var(--muted-foreground); text-transform: uppercase;">FAST SKILLS INJECT:</span>
+              <div id="agentSkillsPills" style="display: flex; gap: 0.4rem; flex-wrap: wrap;"></div>
+            </div>
+            <div id="studioPreflightBudget" style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted-foreground); text-transform: uppercase;">
+              PRE-FLIGHT: ~0 TOKENS (0.00% CTX)
+            </div>
           </div>
         </div>
 
@@ -2028,6 +2033,33 @@
           </div>
           <button class="btn-primary" id="btnTestMcpTool">RUN MCP TOOL EXECUTION</button>
           <div class="tool-status-text" id="toolMcpStatus" style="white-space: pre-wrap; max-height: 200px; overflow-y: auto;">STATUS: SELECT SERVER AND TOOL TO RUN</div>
+        </div>
+
+        <!-- Tool 4: Tiktoken Pre-Flight Token Estimator -->
+        <div class="tool-box" style="grid-column: 1 / -1;">
+          <div class="tool-box-title">
+            <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            TIKTOKEN PRE-FLIGHT TOKEN ESTIMATOR &bull; CONTEXT WINDOW BUDGET
+          </div>
+          <p class="card-desc">Accurately calculate token count, multimodal image overhead, and API-loaded context window utilization before executing requests.</p>
+          <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.25rem;">
+            <div class="option-group">
+              <label class="option-label" for="toolTokenizerInput">INPUT TEXT / PROMPT</label>
+              <textarea class="form-input" id="toolTokenizerInput" style="height: 110px; resize: vertical; font-family: var(--font-mono); padding: 0.75rem;" placeholder="Enter text or markdown to tokenize...">Turn pdf to markdown with formulas in latex and made visuals like shapes in svg.</textarea>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 1rem;">
+              <div class="option-group">
+                <label class="option-label" for="toolTokenizerModel">TARGET MODEL</label>
+                <select class="form-select" id="toolTokenizerModel"></select>
+              </div>
+              <div class="option-group">
+                <label class="option-label" for="toolTokenizerPages">DOCUMENT PAGES (VISION: ~1200 TOKENS/PAGE)</label>
+                <input type="number" class="form-input" id="toolTokenizerPages" value="1" min="0" max="100">
+              </div>
+            </div>
+          </div>
+          <button class="btn-primary" id="btnTestTokenizer">CALCULATE PRE-FLIGHT BUDGET</button>
+          <div class="tool-status-text" id="toolTokenizerStatus" style="white-space: pre-wrap; font-family: var(--font-mono); min-height: 54px;">STATUS: READY FOR TOKEN ESTIMATION</div>
         </div>
       </div>
     </section>
@@ -3781,9 +3813,12 @@
     };
 
     // --- DYNAMIC AI MODELS DISCOVERY VIA OPENAI API ---
+    window.CACHED_MODELS_MAP = {};
+
     async function loadAiModels() {
       const select = document.getElementById('modelSelect');
       const datalist = document.getElementById('modelOptionsDatalist');
+      const tokenizerModelSelect = document.getElementById('toolTokenizerModel');
       if (!select) return;
 
       const refreshBtn = document.getElementById('btnRefreshModels');
@@ -3794,6 +3829,8 @@
         if (!res.ok) throw new Error('API request failed');
         const data = await res.json();
         const models = data.models || [];
+        const modelsMap = data.models_map || {};
+        window.CACHED_MODELS_MAP = modelsMap;
         const currentModel = data.current_model || select.value;
 
         // Remember user selection if already chosen
@@ -3801,15 +3838,28 @@
 
         select.innerHTML = '';
         if (datalist) datalist.innerHTML = '';
+        if (tokenizerModelSelect) tokenizerModelSelect.innerHTML = '';
 
         models.forEach(m => {
+          const mInfo = modelsMap[m] || {};
+          const ctx = mInfo.context_window;
+          const ctxLabel = ctx ? ` (${Number(ctx).toLocaleString()} CTX)` : '';
+
           const opt = document.createElement('option');
           opt.value = m;
-          opt.textContent = m === currentModel ? `${m} (DEFAULT)` : m;
+          opt.textContent = (m === currentModel ? `${m} (DEFAULT)` : m) + ctxLabel;
           if (m === previouslySelected) {
             opt.selected = true;
           }
           select.appendChild(opt);
+
+          if (tokenizerModelSelect) {
+            const tOpt = document.createElement('option');
+            tOpt.value = m;
+            tOpt.textContent = m + ctxLabel;
+            if (m === previouslySelected) tOpt.selected = true;
+            tokenizerModelSelect.appendChild(tOpt);
+          }
 
           if (datalist) {
             const dOpt = document.createElement('option');
@@ -3822,6 +3872,9 @@
           refreshBtn.textContent = `\u21bb (${models.length})`;
           refreshBtn.title = `Connected to ${data.source === 'api' ? 'Live API' : 'Fallback'} (${models.length} models)`;
         }
+
+        // Trigger pre-flight budgeting refresh
+        updateStudioPreflightBudget();
       } catch (err) {
         console.warn('Failed to load dynamic models', err);
         if (refreshBtn) refreshBtn.textContent = '\u21bb ERR';
@@ -3829,6 +3882,90 @@
     }
 
     document.getElementById('btnRefreshModels')?.addEventListener('click', loadAiModels);
+
+    // --- TIKTOKEN PRE-FLIGHT TOKEN BUDGET ESTIMATOR ---
+    let preflightDebounceTimer = null;
+
+    async function updateStudioPreflightBudget() {
+      const budgetBadge = document.getElementById('studioPreflightBudget');
+      const promptInput = document.getElementById('agentPromptInput');
+      const mdInput = document.getElementById('markdownText');
+      const modelSelect = document.getElementById('modelSelect');
+      if (!budgetBadge) return;
+
+      const promptText = (promptInput ? promptInput.value : '') || '';
+      const fullContextText = promptText + '\n\n' + ((mdInput ? mdInput.value : '') || '');
+      const chosenModel = (modelSelect ? modelSelect.value : '') || 'ag/gemini-3.8-flash-high';
+
+      if (!fullContextText.trim()) {
+        budgetBadge.textContent = 'PRE-FLIGHT: ~0 TOKENS (0.00% CTX)';
+        return;
+      }
+
+      clearTimeout(preflightDebounceTimer);
+      preflightDebounceTimer = setTimeout(async () => {
+        try {
+          const res = await fetch('/api/tools/estimate-tokens', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+              text: fullContextText,
+              model: chosenModel,
+              page_count: 0
+            })
+          });
+          if (!res.ok) throw new Error('Failed to estimate');
+          const data = await res.json();
+          budgetBadge.innerHTML = `PRE-FLIGHT: <strong style="color: var(--accent);">${data.text_tokens.toLocaleString()} TOKENS</strong> (${data.formatted_percent} CTX) &bull; EST. ${data.formatted_cost}`;
+        } catch (e) {
+          // Client-side fallback: ~4 characters per token
+          const approxTokens = Math.max(1, Math.round(fullContextText.length / 4));
+          const limit = (window.CACHED_MODELS_MAP[chosenModel]?.context_window) || 128000;
+          const pct = ((approxTokens / limit) * 100).toFixed(2);
+          budgetBadge.textContent = `PRE-FLIGHT: ~${approxTokens.toLocaleString()} TOKENS (${pct}% CTX)`;
+        }
+      }, 250);
+    }
+
+    document.getElementById('agentPromptInput')?.addEventListener('input', updateStudioPreflightBudget);
+    document.getElementById('markdownText')?.addEventListener('input', updateStudioPreflightBudget);
+    document.getElementById('modelSelect')?.addEventListener('change', updateStudioPreflightBudget);
+
+    // Sandbox Tiktoken Estimator Action
+    document.getElementById('btnTestTokenizer')?.addEventListener('click', async () => {
+      const text = document.getElementById('toolTokenizerInput').value;
+      const model = document.getElementById('toolTokenizerModel').value;
+      const pages = parseInt(document.getElementById('toolTokenizerPages').value || '0', 10);
+      const statusEl = document.getElementById('toolTokenizerStatus');
+
+      statusEl.textContent = 'STATUS: CALCULATING WITH TIKTOKEN ENCODER...';
+      try {
+        const res = await fetch('/api/tools/estimate-tokens', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            text: text,
+            model: model,
+            page_count: pages
+          })
+        });
+        if (!res.ok) throw new Error('Estimation failed');
+        const d = await res.json();
+        statusEl.textContent = `STATUS: SUCCESS (TIKTOKEN VERIFIED)
+TEXT TOKENS: ${d.text_tokens.toLocaleString()}
+IMAGE VISION TOKENS: ${d.image_tokens.toLocaleString()} (${pages} pages)
+PROMPT TOKENS: ${d.prompt_tokens.toLocaleString()}
+ESTIMATED COMPLETION: ${d.estimated_completion_tokens.toLocaleString()}
+TOTAL PRE-FLIGHT TOKENS: ${d.total_estimated_tokens.toLocaleString()}
+CONTEXT WINDOW CEILING: ${d.context_limit.toLocaleString()} TOKENS (LOADED FROM API)
+CONTEXT WINDOW UTILIZED: ${d.formatted_percent}
+ESTIMATED COST (USD): ${d.formatted_cost}`;
+        statusEl.style.borderColor = '#22c55e';
+      } catch (err) {
+        statusEl.textContent = `STATUS: ERROR - ${err.message}`;
+        statusEl.style.borderColor = '#ef4444';
+      }
+    });
 
     // Initial pre-load of skills, MCP servers, and dynamic AI models
     loadSkills();
